@@ -134,3 +134,41 @@ La transformación más importante es convertir el campo `criterio_aceptacion` (
 
 Genera el JSON transformado.
 """
+
+
+EXTRACT_STRUCTURED_DATA_PROMPT_TOOL_DESC = """
+Extraer de forma estructurada el contenido del documento dependiendo el tipo de documento que sea
+"""
+
+STRUCTURED_EXTRACTION_CHANGE_CONTROL = """
+Extraer un listado de cambios del método analítico del documento de control de cambios
+
+## JSON de Entrada
+
+<descripcion_detallada_cambio>
+{metadata_content}
+</descripcion_detallada_cambio>
+
+"""
+
+STRUCTURED_EXTRACTION_SIDE_BY_SIDE = """
+Extraer información específica que será insertada en el método analítico modificado a partir de la información extraída de un documento side by side. Debe ser estructurada acorde al formato del método analítico.
+
+## JSON de Entrada
+
+<descripcion_side_by_side>
+{metadata_content}
+</descripcion_side_by_side>
+
+"""
+
+STRUCTURED_EXTRACTION_REFERENCE_METHODS = """
+Extraer información específica que será insertada en el método analítico modificado a partir de la información extraída de diferentes métodos analíticos de referencia. Debe ser estructurada acorde al formato del método analítico.
+
+## JSON de Entrada
+
+<datos_metodo_referencia>
+{metadata_content}
+</datos_metodo_referencia>
+
+"""
