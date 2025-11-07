@@ -119,7 +119,7 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
 
 **CUANDO el TODO `in_progress` contiene "Migrar Método Legado":**
 
-  * **Agente a Llamar:** `subagent_type="legacy-migration-agent"`
+  * **Agente a Llamar:** `subagent_type="legacy_migration_agent"`
   * **Descripción de la Tarea:** Pásale la ruta del archivo que te dio el usuario. El subagente se encargará *internamente* de todo su flujo (Extraer, Fan-Out, Fan-In, Consolidar), tal como lo define *su propio prompt*.
   * **Ejemplo de llamada `task`**:
     ```json
@@ -127,7 +127,7 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
       "name": "task",
       "args": {{
         "description": "El usuario solicitó procesar este archivo: 'D:/Ruta/400001644.pdf'. Por favor, ejecuta tu flujo completo de migración (Extraer, Paralelizar y Consolidar) sobre él.",
-        "subagent_type": "legacy-migration-agent"
+        "subagent_type": "legacy_migration_agent"
       }}
     }}
     ```
@@ -137,7 +137,7 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
 
 **CUANDO el TODO `in_progress` contiene "Analizar Control de Cambios":**
 
-  * **Agente a Llamar:** `subagent_type="change-control-analyst"`
+  * **Agente a Llamar:** `subagent_type="change_control_agent"`
   * **Descripción de la Tarea:** Pásale la ruta al archivo de CC.
   * **Ejemplo de llamada `task`**:
     ```json
@@ -145,7 +145,7 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
       "name": "task",
       "args": {{
         "description": "Procesar el documento de control de cambios: 'D:/Ruta/CC-001.pdf'",
-        "subagent_type": "change-control-analyst"
+        "subagent_type": "change_control_agent"
       }}
     }}
     ```
@@ -155,7 +155,7 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
 
 **CUANDO el TODO `in_progress` contiene "Analizar Comparativo Side-by-Side":**
 
-  * **Agente a Llamar:** `subagent_type="side-by-side-agent"`
+  * **Agente a Llamar:** `subagent_type="side_by_side_agent"`
   * **Descripción de la Tarea:** Pásale la ruta al archivo de comparación.
   * **Ejemplo de llamada `task`**:
     ```json
@@ -163,7 +163,7 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
       "name": "task",
       "args": {{
         "description": "Procesar el documento comparativo: 'D:/Ruta/comparacion_v1_v2.pdf'",
-        "subagent_type": "side-by-side-agent"
+        "subagent_type": "side_by_side_agent"
       }}
     }}
     ```
@@ -173,13 +173,13 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
 
 **CUANDO el TODO `in_progress` contiene "Analizar Métodos de Referencia":**
 
-  * **Agente a Llamar:** `subagent_type="reference-methods-agent"`
+  * **Agente a Llamar:** `subagent_type="reference_methods_agent"`
   * **PROCESAMIENTO EN PARALELO:** Si hay múltiples archivos de referencia (ej. USP, Farmacopea Europea), DEBES llamar a `task` varias veces en el mismo turno (uno por archivo).
   * **Ejemplo de llamadas `task` (paralelo)**:
     ```json
     [
-      {{ "name": "task", "args": {{ "description": "Analizar método de referencia USP: 'anexo_USP.pdf'", "subagent_type": "reference-methods-agent" }} }},
-      {{ "name": "task", "args": {{ "description": "Analizar método de referencia Ph. Eur.: 'anexo_PhEur.pdf'", "subagent_type": "reference-methods-agent" }} }}
+      {{ "name": "task", "args": {{ "description": "Analizar método de referencia USP: 'anexo_USP.pdf'", "subagent_type": "reference_methods_agent" }} }},
+      {{ "name": "task", "args": {{ "description": "Analizar método de referencia Ph. Eur.: 'anexo_PhEur.pdf'", "subagent_type": "reference_methods_agent" }} }}
     ]
     ```
   * **Al Terminar:** El subagente guardará los archivos (ej. `/new/reference_methods.json`). Usa `think_tool` y avanza el `TODO`.
