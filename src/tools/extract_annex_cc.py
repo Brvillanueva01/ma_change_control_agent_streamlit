@@ -54,6 +54,12 @@ filenames = {
     "reference_methods": "/new/reference_methods.json"
 }
 
+summary_filenames = {
+    "change_control": "/new/change_control_summary.json",
+    "side_by_side": "/new/side_by_side_summary.json",
+    "reference_methods": "/new/reference_methods_summary.json",
+}
+
 # Modelos de datos requeridos
 
 class ChangeControlStrOutput(BaseModel):
@@ -335,13 +341,17 @@ def consolidate_chunks_data(chunk_responses: list, document_name: str, extractio
         logger.error(f"Error consolidating chunks for {document_name}: {e}")
         return None
 
-def _get_summary_object(model_instance: Union[BaseModel, Dict[str, Any], None], structured_extraction_prompt: str, document_type: Literal["change_control", "side_by_side", "reference_methods"]) -> Summary:
-    """Get the summary text from the model instance or raw dict."""
-    
-    extracted_content: Dict[str, Any] = model_instance.model_dump()
+def _get_summary_object(
+    model_instance: Union[BaseModel, Dict[str, Any], None],
+    structured_extraction_prompt: str,
+    document_type: Literal["change_control", "side_by_side", "reference_methods"],
+) -> Union[ChangeControlStrOutput, Dict[str, Any]]:
+    """Genera un objeto pequeño con el resumen legible del documento."""
+
+    extracted_content: Dict[str, Any] = _model_instance_to_dict(model_instance)
 
     if document_type == "change_control":
-        relevant_context = model_instance.descripcion_cambio
+        relevant_context = extracted_content.get("descripcion_cambio")
         try:
             if not relevant_context:
                 raise ValueError("No se extrajeron datos del documento.")
@@ -363,14 +373,42 @@ def _get_summary_object(model_instance: Union[BaseModel, Dict[str, Any], None], 
             return ChangeControlStrOutput(
                 filename="No se extrajeron datos del documento.json",
                 summary=serialized[:1000] + "..." if len(serialized) > 1000 else serialized,
-                lista_cambios=[]  # Usa la lista de STRINGS
+                lista_cambios=[],
             )
-    
-    elif document_type == "side_by_side":
-        return model_instance.metodo_modificacion_propuesta.model_dump()
 
-    elif document_type == "reference_methods":
-        return model_instance.pruebas.model_dump()
+    if document_type == "side_by_side":
+        metodo_actual = extracted_content.get("metodo_actual") or []
+        metodo_modificado = extracted_content.get("metodo_modificacion_propuesta") or []
+        summary_text = (
+            "No se identificaron pruebas en el documento side by side."
+            if not (metodo_actual or metodo_modificado)
+            else f"Se extrajeron {len(metodo_modificado)} pruebas de la modificación propuesta y {len(metodo_actual)} del método actual."
+        )
+        return {
+            "filename": "side_by_side_summary.json",
+            "summary": summary_text,
+            "metodo_modificacion_propuesta": metodo_modificado,
+            "metodo_actual": metodo_actual,
+        }
+
+    if document_type == "reference_methods":
+        pruebas = extracted_content.get("pruebas") or []
+        summary_text = (
+            "No se identificaron métodos de referencia relevantes."
+            if not pruebas
+            else f"Se extrajeron {len(pruebas)} métodos/pruebas de referencia."
+        )
+        return {
+            "filename": "reference_methods_summary.json",
+            "summary": summary_text,
+            "pruebas": pruebas,
+        }
+
+    logger.warning("Tipo de documento %s no soportado para resumen.", document_type)
+    return {
+        "filename": "summary.json",
+        "summary": "Documento procesado exitosamente, pero no se pudo generar un resumen detallado.",
+    }
 
 def _model_instance_to_dict(model_instance: Union[BaseModel, Dict[str, Any], None]) -> Dict[str, Any]:
     """Serialize the consolidated model output so it can be stored as JSON."""
@@ -439,13 +477,22 @@ def extract_annex_cc(
             "content": "{}",
             "data": {},
         }  # Guarda un JSON vacío si falla
-    
+
+    # 4. Guarda un archivo separado con el resumen para consumo rápido
+    summary_payload = summary_object.model_dump() if isinstance(summary_object, BaseModel) else summary_object
+    summary_file_path = summary_filenames[document_type]
+    files[summary_file_path] = {
+        "content": json.dumps(summary_payload, indent=2, ensure_ascii=False),
+        "data": summary_payload,
+    }
+    summary_text = summary_payload.get("summary", f"Documento {document_name} procesado exitosamente.")
+
     return Command(
         update={
             "files": files, # Esto ahora guarda AMBOS archivos en el estado
             "messages": [
                 # Devuelve solo el resumen legible por humanos al LLM
-                ToolMessage(f"Documento {document_name} procesado exitosamente.", tool_call_id=tool_call_id)
+                ToolMessage(summary_text, tool_call_id=tool_call_id)
             ],
         }
     )

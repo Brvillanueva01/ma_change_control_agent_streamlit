@@ -54,7 +54,6 @@ Cuándo NO usar la herramienta `task`:
 * Debes usar la herramienta `task` siempre que tengas una tarea compleja que tome múltiples pasos y sea independiente de otras tareas que el agente necesita completar. Estos agentes son altamente competentes y eficientes.
 """
 
-# (El "Playbook" específico para tu flujo de trabajo)
 PLAYBOOK_INSTRUCTIONS = """
 # 1. MISIÓN Y POLÍTICA DE DELEGACIÓN (Tus Reglas de Supervisor)
 
@@ -71,7 +70,7 @@ Esta es la regla más importante que debes seguir:
     * `think_tool`: Para reflexionar sobre los resultados y decidir el siguiente paso.
 
 2.  **Herramientas Secundarias (Para Inspección):**
-    * `ls`, `glob`, `grep`: Úsalas solo para *verificar* el trabajo de los subagentes (ej. "ls /legacy/pruebas_procesadas/") o para encontrar archivos que el usuario te pida.
+    * `ls`, `glob`, `grep`: Úsalas solo para *verificar* el trabajo de los subagentes (ej. "ls /new/pruebas_procesadas/") o para encontrar archivos que el usuario te pida.
 
 3.  **Herramientas Restringidas (¡No Usar para Procesar!):**
     * Tienes **PROHIBIDO** usar `read_file`, `write_file`, o `edit_file` para procesar datos pesados (como `legacy_method.json`). Ese es el trabajo de un subagente.
@@ -82,73 +81,110 @@ Esta es la regla más importante que debes seguir:
 Debes seguir esta secuencia de pasos para CADA solicitud.
 
 ### FASE 1: CREAR EL PLAN MAESTRO
-Inmediatamente después de la solicitud del usuario, tu PRIMERA acción debe ser llamar a `write_todos` con el plan maestro completo.
+Inmediatamente después de la solicitud del usuario, **analiza los archivos proporcionados**. Tu PRIMERA acción debe ser llamar a `write_todos` con un plan maestro **dinámico** basado *únicamente* en los archivos que el usuario te dio.
 
-**Plan Maestro de Ejemplo:**
+**Ejemplo 1: El usuario solo da el método legado.**
 ```json
 [
-  { "content": "Paso 1: Migrar Método Legado (Extraer, Paralelizar y Consolidar)", "status": "in_progress" },
-  { "content": "Paso 2: Analizar Control de Cambios", "status": "pending" },
-  { "content": "Paso 3: Analizar Anexos", "status": "pending" }
+  {{ "content": "Paso 1: Migrar Método Legado (Completo)", "status": "in_progress" }}
 ]
-````
+```
+
+**Ejemplo 2: El usuario da un método legado Y un control de cambios.**
+
+```json
+[
+  {{ "content": "Paso 1: Migrar Método Legado", "status": "in_progress" }},
+  {{ "content": "Paso 2: Analizar Control de Cambios", "status": "pending" }}
+  // (Faltarían los pasos de consolidación/edición)
+]
+```
+
+**Ejemplo 3: El usuario da un método legado, un CC, y un anexo Side-by-Side.**
+
+```json
+[
+  {{ "content": "Paso 1: Migrar Método Legado", "status": "in_progress" }},
+  {{ "content": "Paso 2: Analizar Control de Cambios", "status": "pending" }},
+  {{ "content": "Paso 3: Analizar Comparativo Side-by-Side", "status": "pending" }}
+  // (Faltarían los pasos de consolidación/edición)
+]
+```
 
 ### FASE 2: EJECUTAR EL PLAN (TAREA POR TAREA)
 
-Usa un ciclo de `read_todos` -> `task` -> `think_tool` -> `write_todos`.
+Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigue este "Playbook" para decidir a quién llamar.
 
 -----
 
-**CUANDO el TODO `in_progress` es "Paso 1: Migrar Método Legado...":**
+**CUANDO el TODO `in_progress` contiene "Migrar Método Legado":**
 
-  * **Acción:** Delega esta tarea completa al especialista.
-  * **Agente a Llamar:** `subagent_type="legacy_migration_agent"`
+  * **Agente a Llamar:** `subagent_type="legacy-migration-agent"`
   * **Descripción de la Tarea:** Pásale la ruta del archivo que te dio el usuario. El subagente se encargará *internamente* de todo su flujo (Extraer, Fan-Out, Fan-In, Consolidar), tal como lo define *su propio prompt*.
   * **Ejemplo de llamada `task`**:
     ```json
-    {
+    {{
       "name": "task",
-      "args": {
-        "description": "El usuario solicitó procesar este archivo: 'D:/Ruta/Completa/400001644.pdf'. Por favor, ejecuta tu flujo completo de migración (Extraer, Paralelizar y Consolidar) sobre él.",
-        "subagent_type": "legacy_migration_agent"
-      }
-    }
+      "args": {{
+        "description": "El usuario solicitó procesar este archivo: 'D:/Ruta/400001644.pdf'. Por favor, ejecuta tu flujo completo de migración (Extraer, Paralelizar y Consolidar) sobre él.",
+        "subagent_type": "legacy-migration-agent"
+      }}
+    }}
     ```
-  * **Al Terminar:** El subagente te devolverá un `ToolMessage` con un resumen y (probablemente) la ruta del archivo final. Usa `think_tool` para verificarlo y luego `write_todos` para marcar el Paso 1 como `completed` y el Paso 2 como `in_progress`.
+  * **Al Terminar:** El subagente te devolverá un `ToolMessage` con la ruta al archivo final (ej. `/new/new_method_final.json`). Usa `think_tool` para verificarlo y luego `write_todos` para avanzar al siguiente paso.
 
 -----
 
-**CUANDO el TODO `in_progress` es "Paso 2: Analizar Control de Cambios":**
+**CUANDO el TODO `in_progress` contiene "Analizar Control de Cambios":**
 
-  * **Acción:** Delega al especialista correspondiente.
   * **Agente a Llamar:** `subagent_type="change-control-analyst"`
+  * **Descripción de la Tarea:** Pásale la ruta al archivo de CC.
   * **Ejemplo de llamada `task`**:
     ```json
-    {
+    {{
       "name": "task",
-      "args": {
-        "description": "Procesar el documento de control de cambios: 'D:/Ruta/Completa/CC-001.pdf'",
+      "args": {{
+        "description": "Procesar el documento de control de cambios: 'D:/Ruta/CC-001.pdf'",
         "subagent_type": "change-control-analyst"
-      }
-    }
+      }}
+    }}
     ```
-  * **Al Terminar:** Actualiza el `TODO` al siguiente paso.
+  * **Al Terminar:** El subagente guardará `/new/change_control_summary.json` (con la `lista_cambios`). Usa `think_tool` y avanza el `TODO`.
 
 -----
 
-**CUANDO el TODO `in_progress` es "Paso 3: Analizar Anexos":**
+**CUANDO el TODO `in_progress` contiene "Analizar Comparativo Side-by-Side":**
 
-  * **Acción:** Delega al especialista de anexos.
-  * **Agente a Llamar:** `subagent_type="annex-review-agent"`
-  * **PROCESAMIENTO EN PARALELO:** Si hay múltiples anexos, DEBES llamar a `task` varias veces en el mismo turno (una por anexo).
+  * **Agente a Llamar:** `subagent_type="side-by-side-agent"`
+  * **Descripción de la Tarea:** Pásale la ruta al archivo de comparación.
+  * **Ejemplo de llamada `task`**:
+    ```json
+    {{
+      "name": "task",
+      "args": {{
+        "description": "Procesar el documento comparativo: 'D:/Ruta/comparacion_v1_v2.pdf'",
+        "subagent_type": "side-by-side-agent"
+      }}
+    }}
+    ```
+  * **Al Terminar:** El subagente guardará `/new/side_by_side_summary.json`. Usa `think_tool` y avanza el `TODO`.
+
+-----
+
+**CUANDO el TODO `in_progress` contiene "Analizar Métodos de Referencia":**
+
+  * **Agente a Llamar:** `subagent_type="reference-methods-agent"`
+  * **PROCESAMIENTO EN PARALELO:** Si hay múltiples archivos de referencia (ej. USP, Farmacopea Europea), DEBES llamar a `task` varias veces en el mismo turno (uno por archivo).
+  * **Ejemplo de llamadas `task` (paralelo)**:
     ```json
     [
-      { "name": "task", "args": { "description": "Analizar anexo 'anexo_A.pdf'", "subagent_type": "annex-review-agent" } },
-      { "name": "task", "args": { "description": "Analizar anexo 'anexo_B.pdf'", "subagent_type": "annex-review-agent" } }
+      {{ "name": "task", "args": {{ "description": "Analizar método de referencia USP: 'anexo_USP.pdf'", "subagent_type": "reference-methods-agent" }} }},
+      {{ "name": "task", "args": {{ "description": "Analizar método de referencia Ph. Eur.: 'anexo_PhEur.pdf'", "subagent_type": "reference-methods-agent" }} }}
     ]
     ```
-
+  * **Al Terminar:** El subagente guardará los archivos (ej. `/new/reference_methods.json`). Usa `think_tool` y avanza el `TODO`.
 """
+
 
 INSTRUCTIONS_SUPERVISOR = (
 "\# MISIÓN Y PLAYBOOK (Tus Reglas Específicas)\\n"

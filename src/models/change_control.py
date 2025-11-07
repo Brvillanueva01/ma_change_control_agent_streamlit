@@ -37,6 +37,11 @@ class ProductoAfectadoCambio(BaseModel):
     no_orden: str = Field(..., description="Número de orden del producto afectado por el cambio. Puede estar vacío")
     no_lote: str = Field(..., description="Número de lote del producto afectado por el cambio. Puede estar vacío")
 
+class DescripcionCambio(BaseModel):
+    """Descripción del cambio"""
+    prueba: str = Field(..., description="Prueba a la que se aplica el cambio.")
+    texto: str = Field(..., description="Descripción del cambio que le será realizado a la prueba.")
+
 class ChangeControlModel(BaseModel):
     # Encabezado
     codigo_solicitud: str = Field(..., description="Código de la solicitud de cambio, normalmente se encuentra en el encabezado del documento al lado de PLAN DE CONTROL DE CAMBIOS.")
@@ -49,7 +54,7 @@ class ChangeControlModel(BaseModel):
     fecha_aprobacion: str = Field(..., description="Fecha de aprobación del cambio.")
 
     # Inicio e identificación del cambio
-    descripcion_cambio: str = Field(..., description="Descripción del cambio. Usualmente es un texto extenso explicativo del cambio que abarca varias hojas. Inicia desde strings como 'SECCION I: INICIO E IDENTIFICACION DEL CAMBIO', y finaliza cerca de strings como 'JUSTIFICACION'.")
+    descripcion_cambio: List[DescripcionCambio] = Field(..., description="Listado de descripciones de los diferentes cambios en las pruebas del método analítico. Usualmente es un texto extenso explicativo del cambio que abarca varias hojas. Inicia desde strings como 'SECCION I: INICIO E IDENTIFICACION DEL CAMBIO', y finaliza cerca de strings como 'JUSTIFICACION'.")
     cliente: str = Field(..., description="Nombre del cliente. Se encuentra cerca del string 'CLIENTE'.")
     centro: str = Field(..., description="Nombre del centro. Se encuentra cerca del string 'CENTRO'.")
 

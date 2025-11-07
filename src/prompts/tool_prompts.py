@@ -1,6 +1,25 @@
-
 STRUCTURED_SPECS_PROC_PROMPT_TOOL_DESC = """
+Procesa una única prueba de método analítico por su ID, la transforma a un nuevo formato estructurado y la guarda como un archivo JSON individual.
 
+## Cuándo usar
+- Esta es la herramienta principal del "Fan-Out" (paralelización).
+- Debe ser llamada **una vez por cada ID de prueba** que se obtuvo del archivo `/legacy/summary_and_tests.json`.
+- El agente **debe** llamar a esta herramienta múltiples veces en paralelo (en un solo turno) si tiene múltiples IDs para procesar.
+
+## Buenas Prácticas
+- **Confianza en el Estado:** Esta herramienta *internamente* leerá el archivo JSON grande (`/legacy/legacy_method.json`) desde el estado. El agente **no** necesita leer o pasar ese contenido; solo debe proporcionar el `id_prueba`.
+- **ID Exacto:** El `id_prueba` debe ser el string hexadecimal de 8 caracteres (hex8) exacto, tal como se extrajo.
+
+## Parámetros
+- `id_prueba (str)`: El ID único de 8 caracteres hexadecimales (ej. 'f47ac10b') de la prueba a procesar. Este ID debe venir de la `lista_pruebas` (o `pruebas_plan`) extraída del archivo `/legacy/summary_and_tests.json`.
+
+## Salida y Efectos en el Estado
+- **Mensaje de Retorno (ToolMessage):** La herramienta devuelve un `ToolMessage` que contiene **únicamente la ruta (path) al nuevo archivo JSON** que se creó (ej. '/new/pruebas_procesadas/f47ac10b.json').
+- **Actualización del Estado (State):** Añade un **nuevo archivo** al estado en el directorio virtual `/new/pruebas_procesadas/`. El nombre del archivo será el `id_prueba` (ej. `f47ac10b.json`).
+
+## Siguiente Paso Esperado
+- El agente debe **recolectar todas las rutas de archivo** devueltas por cada una de estas llamadas en paralelo.
+- Una vez que todas las pruebas hayan sido procesadas y todas las rutas recolectadas, el agente debe llamar a `consolidar_pruebas_procesadas` con la lista completa de rutas y la ruta al archivo base (`/legacy/legacy_method.json`).
 """
 
 EXTRACT_LEGACY_SECTIONS_PROMPT_TOOL_DESC = """
@@ -137,18 +156,87 @@ Genera el JSON transformado.
 
 
 EXTRACT_STRUCTURED_DATA_PROMPT_TOOL_DESC = """
-Extraer de forma estructurada el contenido del documento dependiendo el tipo de documento que sea
+Extrae información clave de documentos de soporte (Controles de Cambio, Comparativos, o Referencias) y prepara un resumen estructurado.
+
+## Cuándo usar
+- Cuando se pide "analizar", "procesar", o "extraer" un documento de soporte que NO es el método legado principal.
+- Usar para **Controles de Cambio (CC)**, **comparaciones Side-by-Side**, o **métodos de referencia** (Farmacopea, USP, etc.).
+- Esta herramienta es llamada por subagentes especialistas (como 'change-control-analyst' o 'reference-methods-agent').
+
+## Buenas Prácticas
+- **Selección del Modelo:** La decisión más importante es elegir el `document_type` correcto. El agente debe saber su propio rol (ej. 'change_control_analyst') y usar el `document_type` correspondiente ("change_control").
+- **Manejo de Archivos:** La herramienta maneja automáticamente la conversión de DOCX a PDF y la división (chunking). El agente no necesita preocuparse por esto.
+- **Llamada Única:** No llames a esta herramienta varias veces para el mismo archivo.
+
+## Parámetros
+- `dir_document (str)`: La ruta completa (path) al archivo DOCX o PDF que se va a procesar.
+- `document_type (Literal)`: El tipo de modelo de extracción a utilizar. Debe ser **exactamente** uno de los siguientes valores:
+    - `"change_control"`: Para un documento de Control de Cambios.
+    - `"side_by_side"`: Para un documento de comparación "lado a lado".
+    - `"reference_methods"`: Para un método de referencia (ej. Farmacopea, USP).
+
+## Salida y Efectos en el Estado
+- **Mensaje de Retorno (ToolMessage):** La herramienta devuelve un `ToolMessage` que contiene un **resumen** en lenguaje natural del contenido extraído (ej. "Se extrajeron 5 cambios...").
+- **Actualización del Estado (State):** Esta herramienta tiene un **doble efecto** en el estado `state['files']`:
+    1.  **JSON Completo:** Guarda la extracción completa (el objeto Pydantic) en su ruta principal (ej. `/new/change_control.json`). El agente **no** debe leer este archivo gigante.
+    2.  **Resumen Estructurado:** Guarda un **nuevo** archivo de resumen pequeño (ej. `/new/change_control_summary.json`). Este archivo SÍ es pequeño y contiene la `lista_cambios` (para CC) u otros datos estructurados listos para usar.
+
+## Siguiente Paso Esperado
+- Después de ejecutar esta herramienta, el siguiente paso lógico del agente es:
+    1.  Llamar a `read_file()` sobre el archivo de **resumen** (ej. `/new/change_control_summary.json`) para obtener la lista de cambios o los datos estructurados.
+    2.  Usar esa lista para informar al supervisor o para el siguiente paso de planificación (ej. 'dictionary-planner').
 """
 
 STRUCTURED_EXTRACTION_CHANGE_CONTROL = """
-Extraer un listado de cambios del método analítico del documento de control de cambios
+Eres un asistente experto en análisis de documentos de control de cambios (CC) farmacéuticos.
+Tu tarea es leer el texto de entrada, que describe los cambios realizados, y extraer la información clave en un formato JSON estructurado.
 
-## JSON de Entrada
+Debes generar un JSON que se ajuste perfectamente al siguiente modelo de datos:
+
+```json
+{{
+  "filename": "CC-001_resumen_cambios.md",
+  "summary": "Un resumen conciso en lenguaje natural de los cambios descritos.",
+  "lista_cambios": [
+    "Descripción textual del primer cambio",
+    "Descripción textual del segundo cambio",
+    "..."
+  ]
+}}
+````
+
+# Reglas de Generación de Campos
+
+Debes seguir estas reglas estrictamente:
+
+**`filename`**:
+
+  * Genera un nombre de archivo descriptivo basado en el contenido.
+  * Debe ser corto, usar guiones bajos (`_`) en lugar de espacios, y terminar en `.md`.
+  * Por ejemplo: `CC-00123_actualizacion_limites.md`.
+
+**`summary`**:
+
+  * Escribe un resumen muy conciso, en una o dos frases, que describa el propósito general de los cambios.
+  * Ejemplo: "Actualización de los criterios de aceptación para la prueba de Dureza y ajuste del procedimiento de Disolución."
+
+**`lista_cambios`**:
+
+  * Esta es la tarea principal. Lee atentamente el texto de entrada.
+  * Extrae cada cambio individual o "ítem de cambio" descrito como un **string separado** en la lista.
+  * Copia el texto del cambio tan literalmente como sea posible, incluyendo detalles técnicos, valores antiguos y valores nuevos.
+  * Si un cambio menciona la "justificación", inclúyela como parte del string de descripción del cambio.
+  * Si el texto de entrada describe 5 cambios distintos, la `lista_cambios` debe contener 5 strings.
+
+# Texto de Entrada (Control de Cambio)
+
+El texto a continuación contiene la descripción detallada de los cambios.
 
 <descripcion_detallada_cambio>
 {metadata_content}
 </descripcion_detallada_cambio>
 
+Genera el JSON estructurado basado *únicamente* en el texto de entrada.
 """
 
 STRUCTURED_EXTRACTION_SIDE_BY_SIDE = """

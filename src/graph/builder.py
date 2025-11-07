@@ -11,6 +11,9 @@ llm_model = init_chat_model(model="openai:gpt-4.1-mini", temperature=0.0)
 
 sub_agents = [
     legacy_migration_subagent,
+    change_control_subagent,
+    side_by_side_subagent,
+    reference_methods_subagent,
 ]
 
 am_change_control_agent = create_deep_agent(
