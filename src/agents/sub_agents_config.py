@@ -32,3 +32,11 @@ reference_methods_subagent = {
     "tools": [extract_annex_cc],
     "model": "openai:gpt-5-mini"
 }
+
+change_implementation_agent = {
+    "name": "change_implementation_agent",
+    "description": "Delega a este agente siempre que te entreguen un documento de control de cambios. Este agente se encargará de ejecutar las herramientas requeridas para generar un json estructurado con el método analítico en el formato nuevo",
+    "system_prompt": CHANGE_IMPLEMENTATION_AGENT_INSTRUCTIONS,
+    "tools": [analyze_change_impact, apply_method_patch],
+    "model": "openai:gpt-5-mini"
+}

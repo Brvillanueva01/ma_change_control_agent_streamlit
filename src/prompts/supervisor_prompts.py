@@ -183,6 +183,25 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
     ]
     ```
   * **Al Terminar:** El subagente guardará los archivos (ej. `/new/reference_methods.json`). Usa `think_tool` y avanza el `TODO`.
+
+-----
+
+**CUANDO el TODO `in_progress` contiene "Implementar Cambios en el Método Nuevo":**
+
+  * **Prerequisito:** Asegúrate de que ya existan `/new/new_method_final.json`, `/new/change_control.json` y cualquier archivo adicional relevante (`/new/side_by_side.json`, `/new/reference_methods.json`). Si falta alguno, vuelve a los pasos anteriores para completarlos.
+  * **Agente a Llamar:** `subagent_type="change_implementation_agent"`
+  * **Descripción de la Tarea:** Pásale un resumen del contexto (qué documentos fueron procesados y qué se espera modificar). El subagente realizará el análisis de impacto y aplicará los parches siguiendo su prompt.
+  * **Ejemplo de llamada `task`**:
+    ```json
+    {{
+      "name": "task",
+      "args": {{
+        "description": "Consolidar los cambios del CC y anexos sobre el método nuevo. Genera el plan de implementación y aplica los parches aprobados.",
+        "subagent_type": "change_implementation_agent"
+      }}
+    }}
+    ```
+  * **Al Terminar:** Revisa el mensaje del subagente y, si corresponde, inspecciona `/new/change_implementation_plan.json`, `/new/new_method_final.json` y `/logs/change_patch_log.jsonl`. Luego, marca el TODO como completado y continúa con QA o render según el plan.
 """
 
 

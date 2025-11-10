@@ -1,26 +1,6 @@
-STRUCTURED_SPECS_PROC_PROMPT_TOOL_DESC = """
-Procesa una única prueba de método analítico por su ID, la transforma a un nuevo formato estructurado y la guarda como un archivo JSON individual.
-
-## Cuándo usar
-- Esta es la herramienta principal del "Fan-Out" (paralelización).
-- Debe ser llamada **una vez por cada ID de prueba** que se obtuvo del archivo `/legacy/summary_and_tests.json`.
-- El agente **debe** llamar a esta herramienta múltiples veces en paralelo (en un solo turno) si tiene múltiples IDs para procesar.
-
-## Buenas Prácticas
-- **Confianza en el Estado:** Esta herramienta *internamente* leerá el archivo JSON grande (`/legacy/legacy_method.json`) desde el estado. El agente **no** necesita leer o pasar ese contenido; solo debe proporcionar el `id_prueba`.
-- **ID Exacto:** El `id_prueba` debe ser el string hexadecimal de 8 caracteres (hex8) exacto, tal como se extrajo.
-
-## Parámetros
-- `id_prueba (str)`: El ID único de 8 caracteres hexadecimales (ej. 'f47ac10b') de la prueba a procesar. Este ID debe venir de la `lista_pruebas` (o `pruebas_plan`) extraída del archivo `/legacy/summary_and_tests.json`.
-
-## Salida y Efectos en el Estado
-- **Mensaje de Retorno (ToolMessage):** La herramienta devuelve un `ToolMessage` que contiene **únicamente la ruta (path) al nuevo archivo JSON** que se creó (ej. '/new/pruebas_procesadas/f47ac10b.json').
-- **Actualización del Estado (State):** Añade un **nuevo archivo** al estado en el directorio virtual `/new/pruebas_procesadas/`. El nombre del archivo será el `id_prueba` (ej. `f47ac10b.json`).
-
-## Siguiente Paso Esperado
-- El agente debe **recolectar todas las rutas de archivo** devueltas por cada una de estas llamadas en paralelo.
-- Una vez que todas las pruebas hayan sido procesadas y todas las rutas recolectadas, el agente debe llamar a `consolidar_pruebas_procesadas` con la lista completa de rutas y la ruta al archivo base (`/legacy/legacy_method.json`).
-"""
+#############################################################################################################
+# TOOL DESCRIPTIONS
+#############################################################################################################
 
 EXTRACT_LEGACY_SECTIONS_PROMPT_TOOL_DESC = """
 Extrae información clave de métodos analíticos legados (PDF o DOCX) y prepara una lista de tareas (pruebas) para el procesamiento en paralelo.
@@ -53,6 +33,128 @@ Extrae información clave de métodos analíticos legados (PDF o DOCX) y prepara
     1.  Llamar a `read_file(path='/legacy/summary_and_tests.json')` para obtener la `lista_pruebas`.
     2.  Usar esa lista para lanzar el 'fan-out' (llamadas en paralelo) a la herramienta `structure_specs_procs`, una llamada por cada prueba en la lista.
 """
+
+STRUCTURED_SPECS_PROC_PROMPT_TOOL_DESC = """
+Procesa una única prueba de método analítico por su ID, la transforma a un nuevo formato estructurado y la guarda como un archivo JSON individual.
+
+## Cuándo usar
+- Esta es la herramienta principal del "Fan-Out" (paralelización).
+- Debe ser llamada **una vez por cada ID de prueba** que se obtuvo del archivo `/legacy/summary_and_tests.json`.
+- El agente **debe** llamar a esta herramienta múltiples veces en paralelo (en un solo turno) si tiene múltiples IDs para procesar.
+
+## Buenas Prácticas
+- **Confianza en el Estado:** Esta herramienta *internamente* leerá el archivo JSON grande (`/legacy/legacy_method.json`) desde el estado. El agente **no** necesita leer o pasar ese contenido; solo debe proporcionar el `id_prueba`.
+- **ID Exacto:** El `id_prueba` debe ser el string hexadecimal de 8 caracteres (hex8) exacto, tal como se extrajo.
+
+## Parámetros
+- `id_prueba (str)`: El ID único de 8 caracteres hexadecimales (ej. 'f47ac10b') de la prueba a procesar. Este ID debe venir de la `lista_pruebas` (o `pruebas_plan`) extraída del archivo `/legacy/summary_and_tests.json`.
+
+## Salida y Efectos en el Estado
+- **Mensaje de Retorno (ToolMessage):** La herramienta devuelve un `ToolMessage` que contiene **únicamente la ruta (path) al nuevo archivo JSON** que se creó (ej. '/new/pruebas_procesadas/f47ac10b.json').
+- **Actualización del Estado (State):** Añade un **nuevo archivo** al estado en el directorio virtual `/new/pruebas_procesadas/`. El nombre del archivo será el `id_prueba` (ej. `f47ac10b.json`).
+
+## Siguiente Paso Esperado
+- El agente debe **recolectar todas las rutas de archivo** devueltas por cada una de estas llamadas en paralelo.
+- Una vez que todas las pruebas hayan sido procesadas y todas las rutas recolectadas, el agente debe llamar a `consolidar_pruebas_procesadas` con la lista completa de rutas y la ruta al archivo base (`/legacy/legacy_method.json`).
+"""
+
+EXTRACT_STRUCTURED_DATA_PROMPT_TOOL_DESC = """
+Extrae información clave de documentos de soporte (Controles de Cambio, Comparativos, o Referencias) y prepara un resumen estructurado.
+
+## Cuándo usar
+- Cuando se pide "analizar", "procesar", o "extraer" un documento de soporte que NO es el método legado principal.
+- Usar para **Controles de Cambio (CC)**, **comparaciones Side-by-Side**, o **métodos de referencia** (Farmacopea, USP, etc.).
+- Esta herramienta es llamada por subagentes especialistas (como 'change-control-analyst' o 'reference-methods-agent').
+
+## Buenas Prácticas
+- **Selección del Modelo:** La decisión más importante es elegir el `document_type` correcto. El agente debe saber su propio rol (ej. 'change_control_analyst') y usar el `document_type` correspondiente ("change_control").
+- **Manejo de Archivos:** La herramienta maneja automáticamente la conversión de DOCX a PDF y la división (chunking). El agente no necesita preocuparse por esto.
+- **Llamada Única:** No llames a esta herramienta varias veces para el mismo archivo.
+
+## Parámetros
+- `dir_document (str)`: La ruta completa (path) al archivo DOCX o PDF que se va a procesar.
+- `document_type (Literal)`: El tipo de modelo de extracción a utilizar. Debe ser **exactamente** uno de los siguientes valores:
+    - `"change_control"`: Para un documento de Control de Cambios.
+    - `"side_by_side"`: Para un documento de comparación "lado a lado".
+    - `"reference_methods"`: Para un método de referencia (ej. Farmacopea, USP).
+
+## Salida y Efectos en el Estado
+- **Mensaje de Retorno (ToolMessage):** La herramienta devuelve un `ToolMessage` que contiene un **resumen** en lenguaje natural del contenido extraído (ej. "Se extrajeron 5 cambios...").
+- **Actualización del Estado (State):** Esta herramienta tiene un **doble efecto** en el estado `state['files']`:
+    1.  **JSON Completo:** Guarda la extracción completa (el objeto Pydantic) en su ruta principal (ej. `/new/change_control.json`). El agente **no** debe leer este archivo gigante.
+    2.  **Resumen Estructurado:** Guarda un **nuevo** archivo de resumen pequeño (ej. `/new/change_control_summary.json`). Este archivo SÍ es pequeño y contiene la `lista_cambios` (para CC) u otros datos estructurados listos para usar.
+
+## Siguiente Paso Esperado
+- Después de ejecutar esta herramienta, el siguiente paso lógico del agente es:
+    1.  Llamar a `read_file()` sobre el archivo de **resumen** (ej. `/new/change_control_summary.json`) para obtener la lista de cambios o los datos estructurados.
+    2.  Usar esa lista para informar al supervisor o para el siguiente paso de planificación (ej. 'dictionary-planner').
+"""
+
+CHANGE_CONTROL_ANALYSIS_TOOL_DESCRIPTION = """
+Analiza la información estructurada de control de cambios y genera un plan accionable para actualizar el método analítico.
+
+## Cuándo usar
+- Después de que existan los archivos procesados por `change_control_agent`, `side_by_side_agent` y/o `reference_methods_agent`.
+- Cuando el supervisor necesita consolidar los cambios propuestos y traducirlos en instrucciones de edición sobre `/new/new_method_final.json`.
+- Úsala una sola vez por ciclo de implementación, una vez que todos los insumos relevantes estén listos.
+
+## Buenas Prácticas
+- **Insumos obligatorios:** Siempre debe estar disponible `/new/change_control.json` y contener las descripciones de cambios.
+- **Insumos opcionales:** `/new/side_by_side.json` y `/new/reference_methods.json` pueden no existir; la herramienta manejará su ausencia.
+- **Contexto resumido:** No es necesario leer manualmente los archivos grandes; la herramienta los valida y extrae solo los campos necesarios para el LLM.
+
+## Parámetros
+- `change_control_path (str)`: Ruta al JSON estructurado del control de cambios. Debe ser siempre `/new/change_control.json`.
+- `new_method_path (str)`: Ruta al método analítico consolidado sobre el cual se aplicarán los parches. Usualmente `/new/new_method_final.json`.
+- `side_by_side_path (str)`: Ruta al JSON side-by-side (si existe). Normalmente `/new/side_by_side.json`.
+- `reference_methods_path (str)`: Ruta al JSON de métodos de referencia (si existe). Por defecto `/new/reference_methods.json`.
+
+## Salida y Efectos en el Estado
+- **Mensaje de Retorno (ToolMessage):** Resume la cantidad de acciones propuestas para implementar los cambios.
+- **Actualización del Estado:** Crea o reemplaza `/new/change_implementation_plan.json`, con un plan estructurado que incluye:
+  - listado de cambios,
+  - pruebas afectadas o nuevas,
+  - acción sugerida (`replace`, `append`, `noop`, `investigar`),
+  - JSON Patch propuesto para aplicar sobre el método nuevo.
+
+## Siguiente Paso Esperado
+- Revisar el plan generado (leer `/new/change_implementation_plan.json`).
+- Someter cada acción a validación humana si es necesario y, posteriormente, llamar a la herramienta de parcheo (`apply_method_patch`) para aplicar los cambios aprobados.
+"""
+
+APPLY_METHOD_PATCH_TOOL_DESCRIPTION = """
+Aplica las operaciones JSON Patch propuestas en el plan de cambios sobre el método analítico consolidado.
+
+## Cuándo usar
+- Después de ejecutar `analyze_change_impact` y revisar el archivo `/new/change_implementation_plan.json`.
+- Cuando se desea validar (dry-run) o aplicar efectivamente los parches sobre `/new/new_method_final.json`.
+- Úsala cuantas veces sea necesario para aprobar por lotes específicos de acciones (vía `patch_indices`).
+
+## Buenas Prácticas
+- Ejecuta primero en modo `dry_run=True` para verificar qué parches serían aplicados y confirmar que la validación del método pasa sin errores.
+- Aplica los parches finales (`dry_run=False`) solo después de la revisión humana y cualquier aprobación requerida.
+- Mantén el historial revisando `/logs/change_patch_log.jsonl`, donde se registran las ejecuciones exitosas.
+
+## Parámetros
+- `plan_path (str)`: Ruta al plan generado por `analyze_change_impact`. Por defecto `/new/change_implementation_plan.json`.
+- `new_method_path (str)`: Ruta al método en formato nuevo que será actualizado. Por defecto `/new/new_method_final.json`.
+- `patch_indices (List[int] | None)`: Lista de índices del plan a procesar. Si se omite, se aplican todas las acciones disponibles.
+- `dry_run (bool)`: Controla si solo se simula la aplicación (`True`) o se persiste el resultado (`False`).
+
+## Salida y Efectos en el Estado
+- **Mensaje de Retorno (ToolMessage):** Indica los índices procesados y si fue un dry-run o una aplicación real.
+- **Actualización del Estado:**
+  - En modo real (`dry_run=False`): sobrescribe `/new/new_method_final.json` con la versión validada y añade una entrada a `/logs/change_patch_log.jsonl` con timestamp e índices aplicados.
+  - En dry-run: no se modifica el estado; solo se confirma que la aplicación sería exitosa.
+
+## Siguiente Paso Esperado
+- Tras un dry-run exitoso, ejecutar nuevamente con `dry_run=False` para consolidar los cambios aprobados.
+- Posteriormente, integrar el método actualizado en el flujo de render (docxtpl) o continuar con revisiones adicionales según SOP.
+"""
+
+#############################################################################################################
+# LLMS CALLS INSIDE TOOLS
+#############################################################################################################
 
 SUMMARIZE_EXTRACTED_LEGACY_METHOD = """
 Estas creando un resumen del metodo analitico extraido. Tu objetivo es ayudar a un agente a saber que informacion se ha extraido, NO debes preservar todos los detalles.
@@ -155,37 +257,7 @@ Genera el JSON transformado.
 """
 
 
-EXTRACT_STRUCTURED_DATA_PROMPT_TOOL_DESC = """
-Extrae información clave de documentos de soporte (Controles de Cambio, Comparativos, o Referencias) y prepara un resumen estructurado.
 
-## Cuándo usar
-- Cuando se pide "analizar", "procesar", o "extraer" un documento de soporte que NO es el método legado principal.
-- Usar para **Controles de Cambio (CC)**, **comparaciones Side-by-Side**, o **métodos de referencia** (Farmacopea, USP, etc.).
-- Esta herramienta es llamada por subagentes especialistas (como 'change-control-analyst' o 'reference-methods-agent').
-
-## Buenas Prácticas
-- **Selección del Modelo:** La decisión más importante es elegir el `document_type` correcto. El agente debe saber su propio rol (ej. 'change_control_analyst') y usar el `document_type` correspondiente ("change_control").
-- **Manejo de Archivos:** La herramienta maneja automáticamente la conversión de DOCX a PDF y la división (chunking). El agente no necesita preocuparse por esto.
-- **Llamada Única:** No llames a esta herramienta varias veces para el mismo archivo.
-
-## Parámetros
-- `dir_document (str)`: La ruta completa (path) al archivo DOCX o PDF que se va a procesar.
-- `document_type (Literal)`: El tipo de modelo de extracción a utilizar. Debe ser **exactamente** uno de los siguientes valores:
-    - `"change_control"`: Para un documento de Control de Cambios.
-    - `"side_by_side"`: Para un documento de comparación "lado a lado".
-    - `"reference_methods"`: Para un método de referencia (ej. Farmacopea, USP).
-
-## Salida y Efectos en el Estado
-- **Mensaje de Retorno (ToolMessage):** La herramienta devuelve un `ToolMessage` que contiene un **resumen** en lenguaje natural del contenido extraído (ej. "Se extrajeron 5 cambios...").
-- **Actualización del Estado (State):** Esta herramienta tiene un **doble efecto** en el estado `state['files']`:
-    1.  **JSON Completo:** Guarda la extracción completa (el objeto Pydantic) en su ruta principal (ej. `/new/change_control.json`). El agente **no** debe leer este archivo gigante.
-    2.  **Resumen Estructurado:** Guarda un **nuevo** archivo de resumen pequeño (ej. `/new/change_control_summary.json`). Este archivo SÍ es pequeño y contiene la `lista_cambios` (para CC) u otros datos estructurados listos para usar.
-
-## Siguiente Paso Esperado
-- Después de ejecutar esta herramienta, el siguiente paso lógico del agente es:
-    1.  Llamar a `read_file()` sobre el archivo de **resumen** (ej. `/new/change_control_summary.json`) para obtener la lista de cambios o los datos estructurados.
-    2.  Usar esa lista para informar al supervisor o para el siguiente paso de planificación (ej. 'dictionary-planner').
-"""
 
 STRUCTURED_EXTRACTION_CHANGE_CONTROL = """
 Eres un asistente experto en análisis de documentos de control de cambios (CC) farmacéuticos.
@@ -260,3 +332,4 @@ Extraer información específica que será insertada en el método analítico mo
 </datos_metodo_referencia>
 
 """
+

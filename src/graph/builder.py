@@ -14,6 +14,7 @@ sub_agents = [
     change_control_subagent,
     side_by_side_subagent,
     reference_methods_subagent,
+    change_implementation_agent
 ]
 
 am_change_control_agent = create_deep_agent(
