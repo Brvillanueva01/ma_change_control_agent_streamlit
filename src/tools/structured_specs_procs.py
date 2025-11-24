@@ -45,6 +45,10 @@ class CondicionCromatografica(BaseModel):
     descripcion: str = Field(..., description="Descripción de la condición cromatográfica")
 
 class Prueba(BaseModel):
+    id_prueba: Optional[str] = Field(
+        default=None,
+        description="Identificador único (UUID o hash) de la prueba en el método legado.",
+    )
     prueba: str = Field(..., description="Prueba del método analítico a la que se refiere el procedimiento.")
     procedimientos: str = Field(..., description="Descripción detallada de los procedimientos de la prueba analítica.")
     equipos: Optional[List[str]] = Field(..., description="Listado de Equipos declarados en la prueba")
@@ -185,8 +189,7 @@ def structure_specs_procs(
 
     try:
         structured_model = spec_proc_gen_model.with_structured_output(Prueba)
-        
-        # Asumo que tu prompt se llama 'GENERATE_STRUCTURED_CONTENT_TEST'
+
         prueba_en_nuevo_formato = structured_model.invoke([
             HumanMessage(content=GENERATE_STRUCTURED_CONTENT_TEST.format(
                 extracted_content=test_json_string, 
@@ -209,7 +212,9 @@ def structure_specs_procs(
 
     # Guardar el resultado (como dict) en el estado 'files'
     # Usamos model_dump() para guardar un dict, que es serializable.
-    files[ruta_salida] = prueba_en_nuevo_formato.model_dump()
+    prueba_dict = prueba_en_nuevo_formato.model_dump()
+    prueba_dict["id_prueba"] = id_prueba
+    files[ruta_salida] = prueba_dict
 
     # 6. Devolver un mensaje de éxito (Mensaje de éxito actualizado)
     mensaje_exito = f"Prueba ID '{id_prueba}' procesada y guardada exitosamente en: {ruta_salida}"

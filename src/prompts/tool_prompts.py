@@ -123,34 +123,40 @@ Analiza la información estructurada de control de cambios y genera un plan acci
 """
 
 APPLY_METHOD_PATCH_TOOL_DESCRIPTION = """
-Aplica las operaciones JSON Patch propuestas en el plan de cambios sobre el método analítico consolidado.
-
-## Cuándo usar
-- Después de ejecutar `analyze_change_impact` y revisar el archivo `/new/change_implementation_plan.json`.
-- Cuando se desea validar (dry-run) o aplicar efectivamente los parches sobre `/new/new_method_final.json`.
-- Úsala cuantas veces sea necesario para aprobar por lotes específicos de acciones (vía `patch_indices`).
-
-## Buenas Prácticas
-- Ejecuta primero en modo `dry_run=True` para verificar qué parches serían aplicados y confirmar que la validación del método pasa sin errores.
-- Aplica los parches finales (`dry_run=False`) solo después de la revisión humana y cualquier aprobación requerida.
-- Mantén el historial revisando `/logs/change_patch_log.jsonl`, donde se registran las ejecuciones exitosas.
-
-## Parámetros
-- `plan_path (str)`: Ruta al plan generado por `analyze_change_impact`. Por defecto `/new/change_implementation_plan.json`.
-- `new_method_path (str)`: Ruta al método en formato nuevo que será actualizado. Por defecto `/new/new_method_final.json`.
-- `patch_indices (List[int] | None)`: Lista de índices del plan a procesar. Si se omite, se aplican todas las acciones disponibles.
-- `dry_run (bool)`: Controla si solo se simula la aplicación (`True`) o se persiste el resultado (`False`).
-
-## Salida y Efectos en el Estado
-- **Mensaje de Retorno (ToolMessage):** Indica los índices procesados y si fue un dry-run o una aplicación real.
-- **Actualización del Estado:**
-  - En modo real (`dry_run=False`): sobrescribe `/new/new_method_final.json` con la versión validada y añade una entrada a `/logs/change_patch_log.jsonl` con timestamp e índices aplicados.
-  - En dry-run: no se modifica el estado; solo se confirma que la aplicación sería exitosa.
-
-## Siguiente Paso Esperado
-- Tras un dry-run exitoso, ejecutar nuevamente con `dry_run=False` para consolidar los cambios aprobados.
-- Posteriormente, integrar el método actualizado en el flujo de render (docxtpl) o continuar con revisiones adicionales según SOP.
-"""
+  Genera y aplica el contenido completo de una prueba del plan de cambios usando la información del método nuevo,
+  side-by-side y métodos de referencia.
+  
+  ## Cuándo usar
+  - Después de obtener el plan en `/new/change_implementation_plan.json` mediante `analyze_change_impact`.
+  - Cuando necesites materializar **una** acción del plan (índice específico) ya sea para revisión (`dry_run=True`) o para
+    actualizar definitivamente `/new/new_method_final.json` (`dry_run=False`).
+  - Se espera que el sub-agente invoque esta herramienta en paralelo, una vez por cada acción pendiente.
+  
+  ## Buenas Prácticas
+  - Proporciona siempre el `action_index` correcto; revisa el plan antes de llamar a la herramienta.
+  - Ejecuta primero con `dry_run=True` si deseas validar el contenido generado sin modificar el archivo final.
+  - Asegúrate de que los archivos de referencia (`side_by_side` y `reference_method`) estén cargados en el estado para
+    que el LLM disponga de contexto completo.
+  
+  ## Parámetros
+  - `plan_path (str)`: Ruta al plan generado por `analyze_change_impact`. Default `/new/change_implementation_plan.json`.
+  - `action_index (int)`: Índice (0-based) de la acción a ejecutar.
+  - `side_by_side_path (str)`: Ruta al JSON del análisis side-by-side. Default `/new/side_by_side.json`.
+  - `reference_method_path (str)`: Ruta al JSON de métodos de referencia. Default `/new/reference_method.json`.
+  - `new_method_path (str)`: Ruta al método consolidado que será modificado. Default `/new/new_method_final.json`.
+  - `dry_run (bool)`: Si es `True`, valida y reporta el resultado sin escribir archivos; `False` persiste los cambios.
+  
+  ## Salida y Efectos en el Estado
+  - **Mensaje de Retorno (ToolMessage):** Indica si la prueba se generó/aplicó y resume notas del LLM.
+  - **Actualización del Estado:**
+    - `dry_run=True`: no se modifica `/new/new_method_final.json`; se usa solo para validación previa.
+    - `dry_run=False`: sobrescribe `/new/new_method_final.json` con la versión actualizada y registra la ejecución en
+      `/logs/change_patch_log.jsonl`.
+  
+  ## Siguiente Paso Esperado
+  - Repetir la llamada con `dry_run=False` cuando el contenido generado sea aprobado.
+  - Continuar procesando los siguientes `action_index` hasta completar el plan y luego avanzar al render o revisiones SOP.
+  """
 
 #############################################################################################################
 # LLMS CALLS INSIDE TOOLS

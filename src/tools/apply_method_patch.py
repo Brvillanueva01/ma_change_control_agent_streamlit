@@ -4,25 +4,147 @@ import json
 import logging
 from copy import deepcopy
 from datetime import datetime
-from typing import Annotated, Any, Iterable, Optional, Sequence
+from typing import Annotated, Any, Optional, List
 
-from langchain_core.messages import ToolMessage
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from src.graph.state import DeepAgentState
 from src.prompts.tool_prompts import APPLY_METHOD_PATCH_TOOL_DESCRIPTION
 from src.tools.analyze_change_impact import ChangeImpactPlan
-from src.tools.consolidar_pruebas_procesadas import MetodoAnaliticoNuevo
+from src.tools.consolidar_pruebas_procesadas import (
+    MetodoAnaliticoNuevo,
+    Prueba as MetodoPrueba,
+    Especificacion,
+    CondicionCromatografica,
+    Solucion,
+)
 
 logger = logging.getLogger(__name__)
 
 PLAN_DEFAULT_PATH = "/new/change_implementation_plan.json"
 METHOD_DEFAULT_PATH = "/new/new_method_final.json"
 PATCH_LOG_PATH = "/logs/change_patch_log.jsonl"
+REFERENCE_METHOD_DEFAULT_PATH = "/new/reference_method.json"
+SIDE_BY_SIDE_DEFAULT_PATH = "/new/side_by_side.json"
+method_patch_model = init_chat_model(model="openai:gpt-5-mini", temperature=0)
 
+
+class MetodoPruebaLLM(BaseModel):
+    id_prueba: str = Field(
+        ...,
+        description="Identificador único (usa el existente cuando corresponda o genera uno nuevo al agregar pruebas).",
+    )
+    prueba: str = Field(
+        ...,
+        description="Nombre exacto de la prueba en el método nuevo.",
+    )
+    procedimientos: str = Field(
+        ...,
+        description="Procedimiento detallado o nota de eliminación; no puede quedar vacío.",
+    )
+    equipos: Optional[List[str]] = Field(
+        default=None,
+        description="Lista de equipos utilizados; usa null si no aplica.",
+    )
+    condiciones_cromatograficas: Optional[List[CondicionCromatografica]] = Field(
+        default=None,
+        description="Condiciones cromatográficas completas, si existen.",
+    )
+    reactivos: Optional[List[str]] = Field(
+        default=None,
+        description="Reactivos utilizados; null si no aplica.",
+    )
+    soluciones: Optional[List[Solucion]] = Field(
+        default=None,
+        description="Soluciones preparadas; usa [] o null según corresponda.",
+    )
+    especificaciones: List[Especificacion] = Field(
+        ...,
+        description="Al menos una especificación con criterio de aceptación.",
+    )
+
+
+class GeneratedMethodPatch(BaseModel):
+    prueba_resultante: MetodoPruebaLLM
+    comentarios: Optional[str] = Field(
+        default=None,
+        description="Notas breves sobre cómo se construyó la prueba final o recordatorios para el equipo",
+    )
+
+
+APPLY_METHOD_PATCH_INSTRUCTION = """Eres un químico especialista en métodos analíticos farmacéuticos.
+Recibes un contexto en JSON que incluye:
+- La descripción del cambio aprobado (`cambio`), la acción solicitada y su justificación.
+- La prueba objetivo del método nuevo (si existe actualmente).
+- Pruebas de referencia provenientes de side-by-side o métodos de referencia completos.
+- Metadatos del método nuevo (tipo, versión, número, etc.).
+
+Objetivo:
+1. Analiza la acción solicitada (`accion_recomendada` = "replace" o "append") y decide el contenido final de la prueba.
+2. Usa las pruebas fuente como inspiración. Copia fielmente los campos relevantes y adapta lo necesario para mantener consistencia con el método nuevo.
+3. Respeta la estructura del modelo `Prueba` (campos obligatorios: `id_prueba`, `prueba`, `procedimientos`, `especificaciones` con al menos un item). Si un campo no aplica, coloca `null` (para strings/listas) o `[]` según corresponda, pero no lo omitas.
+4. Mantén texto técnico en español, conserva unidades y formato de listas cuando se proporcionen.
+
+Salida esperada (JSON):
+{{
+  "prueba_resultante": {{... objeto completo de la prueba final ...}},
+  "comentarios": "Notas breves opcionales para el equipo (o null)"
+}}
+
+Reglas importantes:
+- **Nunca devuelvas** un objeto vacío (`{}`) ni omitas campos obligatorios. Si la instrucción implica eliminar o desactivar una prueba, aún debes devolver la estructura completa con `procedimientos` explicando la eliminación y `especificaciones` documentando el criterio histórico.
+- **Siempre** llena `procedimientos` y `especificaciones[0].texto_especificacion` con texto en español (puede ser una nota de eliminación si aplica).
+- Repite el `id_prueba` proporcionado en el contexto (o genera uno nuevo solo si se trata de un append y no existe).
+
+Ejemplo agnóstico de `prueba_resultante` válido:
+{{
+  "id_prueba": "<ID_DE_PRUEBA>",
+  "prueba": "<NOMBRE_DE_LA_PRUEBA>",
+  "procedimientos": "<DESCRIPCIÓN_DE_LOS_PROCEDIMIENTOS>",
+  "equipos": ["<EQUIPO_1>", "<EQUIPO_2>"],
+  "condiciones_cromatograficas": null,
+  "reactivos": ["<REACTIVO_1>", "<REACTIVO_2>"],
+  "soluciones": [
+    {{
+      "nombre_solucion": "<NOMBRE_SOLUCIÓN>",
+      "preparacion_solucion": "<PREPARACIÓN_DE_LA_SOLUCIÓN>"
+    }}
+  ],
+  "especificaciones": [
+    {{
+      "prueba": "<NOMBRE_DE_LA_PRUEBA>",
+      "texto_especificacion": "<CRITERIO_DE_ACEPTACIÓN>",
+      "subespecificacion": []
+    }}
+  ]
+}}
+
+Ejemplo cuando la acción es eliminar pero debe dejar trazabilidad:
+{{
+  "id_prueba": "<ID_EXISTENTE>",
+  "prueba": "<NOMBRE_DE_LA_PRUEBA>",
+  "procedimientos": "Esta prueba se elimina del método y se conserva únicamente como referencia histórica. Registrar en el historial de cambios y consultar el documento de origen para el contenido previo.",
+  "equipos": null,
+  "condiciones_cromatograficas": null,
+  "reactivos": null,
+  "soluciones": [],
+  "especificaciones": [
+    {{
+      "prueba": "<NOMBRE_DE_LA_PRUEBA>",
+      "texto_especificacion": "Prueba eliminada por redundancia con <FUENTE>. Mantener registro en SOP correspondiente.",
+      "subespecificacion": []
+    }}
+  ]
+}}
+
+Contexto:
+{context}
+"""
 
 def _load_json_payload(files: dict[str, Any], path: str) -> Optional[dict[str, Any]]:
     entry = files.get(path)
@@ -48,106 +170,104 @@ def _load_json_payload(files: dict[str, Any], path: str) -> Optional[dict[str, A
     return None
 
 
-def _decode_pointer(path: str) -> list[str]:
-    if not path:
-        return []
-    if not path.startswith("/"):
-        raise ValueError(f"Rutas JSON Patch deben iniciar con '/': {path}")
-    tokens = path.lstrip("/").split("/")
-    return [token.replace("~1", "/").replace("~0", "~") for token in tokens]
+def _normalize_text(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    return " ".join(value.strip().lower().split())
 
 
-def _get_child(container: Any, token: str, *, create: bool) -> Any:
-    if isinstance(container, dict):
-        if token not in container:
-            if create:
-                container[token] = {}
-            else:
-                raise KeyError(f"No existe la clave '{token}' en el objeto destino")
-        return container[token]
-
-    if isinstance(container, list):
-        if token == "-":
-            if create:
-                container.append({})
-                return container[-1]
-            raise IndexError("El token '-' solo es válido para operaciones de inserción")
-
-        try:
-            index = int(token)
-        except ValueError as exc:
-            raise ValueError(f"Índice de lista inválido: {token}") from exc
-
-        if index >= len(container):
-            if create:
-                while len(container) <= index:
-                    container.append({})
-            else:
-                raise IndexError(f"Índice fuera de rango: {index}")
-        return container[index]
-
-    raise TypeError("El contenedor debe ser dict o list para navegar por un JSON pointer")
+def _to_jsonable(prueba: Any) -> Optional[dict[str, Any]]:
+    if prueba is None:
+        return None
+    if isinstance(prueba, dict):
+        return deepcopy(prueba)
+    if hasattr(prueba, "model_dump"):
+        return prueba.model_dump(mode="json")
+    return json.loads(json.dumps(prueba, ensure_ascii=False))
 
 
-def _apply_to_parent(parent: Any, token: str, op: str, value: Any) -> None:
-    if isinstance(parent, dict):
-        if op == "add" or op == "replace":
-            parent[token] = value
-            return
-        raise ValueError(f"Operación '{op}' no soportada para objetos JSON")
+def _find_prueba_entry(
+    pruebas: list[Any] | None, target_id: Optional[str], target_name: Optional[str]
+) -> tuple[Optional[int], Optional[dict[str, Any]]]:
+    if not pruebas:
+        return None, None
 
-    if isinstance(parent, list):
-        if token == "-":
-            if op != "add":
-                raise ValueError("El token '-' solo es válido para operaciones 'add'")
-            parent.append(value)
-            return
+    normalized_target = _normalize_text(target_name)
 
-        try:
-            index = int(token)
-        except ValueError as exc:
-            raise ValueError(f"Índice de lista inválido: {token}") from exc
+    if target_id:
+        for idx, raw in enumerate(pruebas):
+            data = _to_jsonable(raw)
+            if isinstance(data, dict) and isinstance(data.get("id_prueba"), str) and data["id_prueba"] == target_id:
+                return idx, data
 
-        if op == "replace":
-            if index >= len(parent):
-                raise IndexError(f"Índice fuera de rango para replace: {index}")
-            parent[index] = value
-            return
-        if op == "add":
-            if index > len(parent):
-                raise IndexError(f"No se puede insertar en índice {index} mayores al tamaño de la lista")
-            parent.insert(index, value)
-            return
-        raise ValueError(f"Operación '{op}' no soportada para listas JSON")
+    if normalized_target:
+        for idx, raw in enumerate(pruebas):
+            data = _to_jsonable(raw)
+            if isinstance(data, dict) and _normalize_text(data.get("prueba")) == normalized_target:
+                return idx, data
 
-    raise TypeError("Los nodos intermedios deben ser objetos o listas")
+    return None, None
 
 
-def _apply_operations(document: dict[str, Any], operations: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    result = deepcopy(document)
-    for op in operations:
-        operation = op.get("op")
-        path = op.get("path")
-        if operation not in {"add", "replace"}:
-            raise ValueError(f"Operación JSON Patch no soportada: {operation}")
-        if not isinstance(path, str):
-            raise ValueError("Cada operación debe contener una ruta 'path' en formato string")
+def _find_prueba_data(pruebas: list[Any] | None, target_id: Optional[str], target_name: Optional[str]) -> Optional[dict[str, Any]]:
+    _, data = _find_prueba_entry(pruebas, target_id, target_name)
+    return data
 
-        tokens = _decode_pointer(path)
-        if not tokens:
-            # reemplazo del documento completo
-            if operation != "replace":
-                raise ValueError("Solo se permite reemplazar el documento completo con 'replace'")
-            result = deepcopy(op.get("value"))
-            continue
 
-        parent = result
-        for token in tokens[:-1]:
-            parent = _get_child(parent, token, create=(operation == "add"))
+def _resolve_reference_context(
+    fuentes: list,
+    side_by_side_payload: Optional[dict[str, Any]],
+    reference_payload: Optional[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    for fuente in fuentes:
+        origen = getattr(fuente, "origen", None) or "desconocido"
+        dataset: list[Any] | None = None
+        if origen == "side_by_side_actual":
+            dataset = (side_by_side_payload or {}).get("metodo_actual")
+        elif origen == "side_by_side_modificacion":
+            dataset = (side_by_side_payload or {}).get("metodo_modificacion_propuesta")
+        elif origen == "reference_method":
+            dataset = (reference_payload or {}).get("pruebas")
 
-        _apply_to_parent(parent, tokens[-1], operation, op.get("value"))
+        contenido = _find_prueba_data(dataset, getattr(fuente, "id_prueba", None), getattr(fuente, "prueba", None))
+        details.append(
+            {
+                "origen": origen,
+                "id_prueba": getattr(fuente, "id_prueba", None),
+                "prueba": getattr(fuente, "prueba", None),
+                "contenido": contenido,
+            }
+        )
+    return details
 
-    return result
+
+def _build_llm_context(
+    action, target_prueba: Optional[dict[str, Any]], referencias: list[dict[str, Any]], method_payload: dict[str, Any]
+) -> dict[str, Any]:
+    resumen_metodo = {
+        key: method_payload.get(key)
+        for key in [
+            "tipo_metodo",
+            "nombre_producto",
+            "numero_metodo",
+            "version_metodo",
+            "codigo_producto",
+        ]
+    }
+
+    return {
+        "cambio": action.cambio,
+        "accion_recomendada": action.accion,
+        "justificacion": action.justificacion,
+        "prueba_metodo_nuevo": {
+            "id_prueba": action.id_prueba_metodo_nuevo,
+            "prueba": action.prueba_metodo_nuevo,
+            "contenido": target_prueba,
+        },
+        "pruebas_fuente": referencias,
+        "metodo_nuevo": resumen_metodo,
+    }
 
 
 def _append_log(files: dict[str, Any], entry: dict[str, Any]) -> None:
@@ -170,11 +290,13 @@ def apply_method_patch(
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
     plan_path: str = PLAN_DEFAULT_PATH,
+    action_index: int = 0,
+    side_by_side_path: str = SIDE_BY_SIDE_DEFAULT_PATH,
+    reference_method_path: str = REFERENCE_METHOD_DEFAULT_PATH,
     new_method_path: str = METHOD_DEFAULT_PATH,
-    patch_indices: Optional[list[int]] = None,
     dry_run: bool = True,
 ) -> Command:
-    logger.info("Iniciando 'apply_method_patch'")
+    logger.info("Iniciando 'apply_method_patch' para la acción %s", action_index)
     files = state.get("files", {}) or {}
 
     plan_payload = _load_json_payload(files, plan_path)
@@ -190,6 +312,17 @@ def apply_method_patch(
         logger.exception(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
+    if action_index < 0 or action_index >= len(plan.plan):
+        msg = f"El índice {action_index} está fuera del rango del plan ({len(plan.plan)} acciones)."
+        logger.error(msg)
+        return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
+
+    action = plan.plan[action_index]
+    if action.accion not in {"replace", "append"}:
+        msg = f"La acción '{action.accion}' no requiere modificación automática (índice {action_index})."
+        logger.info(msg)
+        return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
+
     method_payload = _load_json_payload(files, new_method_path)
     if method_payload is None:
         msg = f"No se encontró el método analítico en {new_method_path}."
@@ -197,74 +330,83 @@ def apply_method_patch(
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
     try:
-        MetodoAnaliticoNuevo(**method_payload)
+        method_model = MetodoAnaliticoNuevo(**method_payload)
     except ValidationError as exc:
         msg = f"El método actual no cumple el esquema esperado: {exc}"
         logger.exception(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
-    indices: Sequence[int]
-    if patch_indices is None or len(patch_indices) == 0:
-        indices = list(range(len(plan.plan)))
-    else:
-        indices = sorted(set(patch_indices))
+    method_json = method_model.model_dump(mode="json")
+    pruebas_metodo = method_json.get("pruebas", [])
 
-    if not indices:
-        msg = "No hay acciones seleccionadas para aplicar."
-        logger.warning(msg)
+    target_index, target_prueba = _find_prueba_entry(pruebas_metodo, action.id_prueba_metodo_nuevo, action.prueba_metodo_nuevo)
+    if action.accion == "replace" and target_prueba is None:
+        msg = (
+            f"No se pudo localizar la prueba '{action.prueba_metodo_nuevo}' (id: {action.id_prueba_metodo_nuevo}) "
+            f"en el método para ejecutar un replace."
+        )
+        logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
-    current_document = deepcopy(method_payload)
-    applied_indices: list[int] = []
-    skipped_indices: list[int] = []
+    side_by_side_payload = _load_json_payload(files, side_by_side_path)
+    reference_payload = _load_json_payload(files, reference_method_path)
+    referencia_detalle = _resolve_reference_context(action.pruebas_fuente, side_by_side_payload, reference_payload)
 
-    for idx in indices:
-        if idx < 0 or idx >= len(plan.plan):
-            logger.warning("Índice %s fuera de rango. Se omite.", idx)
-            skipped_indices.append(idx)
-            continue
+    llm_context = _build_llm_context(action, target_prueba, referencia_detalle, method_json)
+    context_json = json.dumps(llm_context, ensure_ascii=False, indent=2)
 
-        action = plan.plan[idx]
-        if not action.patch:
-            logger.info("Acción %s no contiene operaciones de patch. Se omite.", idx)
-            skipped_indices.append(idx)
-            continue
-
-        try:
-            current_document = _apply_operations(current_document, action.patch)
-            applied_indices.append(idx)
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.exception("Fallo al aplicar el patch %s: %s", idx, exc)
-            skipped_indices.append(idx)
-
-    if not applied_indices:
-        message = "No se aplicaron parches. Verifica que los índices sean correctos y que cada acción contenga operaciones válidas."
-        return Command(update={"messages": [ToolMessage(content=message, tool_call_id=tool_call_id)]})
+    llm_structured = method_patch_model.with_structured_output(GeneratedMethodPatch)
+    try:
+        llm_response = llm_structured.invoke(
+            [HumanMessage(content=APPLY_METHOD_PATCH_INSTRUCTION.format(context=context_json))]
+        )
+    except Exception as exc:  # noqa: BLE001
+        msg = f"El LLM no pudo generar la prueba actualizada: {exc}"
+        logger.exception(msg)
+        return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
     try:
-        validated_method = MetodoAnaliticoNuevo(**current_document)
+        prueba_actualizada = MetodoPrueba(**llm_response.prueba_resultante)
+    except ValidationError as exc:
+        msg = f"El contenido generado por el LLM no cumple el esquema de una prueba: {exc}"
+        logger.exception(msg)
+        return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
+
+    prueba_json = prueba_actualizada.model_dump(mode="json")
+    updated_method = deepcopy(method_json)
+    if action.accion == "replace" and target_index is not None:
+        updated_method["pruebas"][target_index] = prueba_json
+    elif action.accion == "append":
+        updated_method["pruebas"].append(prueba_json)
+
+    try:
+        validated_method = MetodoAnaliticoNuevo(**updated_method)
     except ValidationError as exc:
         msg = f"La versión resultante del método no pasó la validación: {exc}"
         logger.exception(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
-    method_json = validated_method.model_dump(mode="json")
-    method_str = json.dumps(method_json, ensure_ascii=False, indent=2)
-
-    files_update = dict(files)
+    method_dump = validated_method.model_dump(mode="json")
+    method_str = json.dumps(method_dump, ensure_ascii=False, indent=2)
 
     summary_message = (
-        "Dry-run: los parches serían aplicados" if dry_run else "Parches aplicados exitosamente"
-    ) + f" para los índices [{_format_indices(applied_indices)}]."
+        "Dry-run: se generó la prueba actualizada"
+        if dry_run
+        else "Prueba actualizada aplicada al método"
+    )
+    summary_message += f" (acción #{action_index}, {action.accion})."
+    if llm_response.comentarios:
+        summary_message += f" Notas del LLM: {llm_response.comentarios}"
 
+    files_update = dict(files)
     if not dry_run:
-        files_update[new_method_path] = {"content": method_str, "data": method_json}
+        files_update[new_method_path] = {"content": method_str, "data": method_dump}
         log_entry = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "plan_path": plan_path,
             "method_path": new_method_path,
-            "indices_aplicados": applied_indices,
-            "indices_omitidos": skipped_indices,
+            "action_index": action_index,
+            "accion": action.accion,
         }
         _append_log(files_update, log_entry)
 

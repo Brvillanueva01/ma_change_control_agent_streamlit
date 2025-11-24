@@ -1,5 +1,6 @@
 import logging
 import json
+from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional, Annotated, Dict, Union, Any
 
@@ -49,6 +50,10 @@ class CondicionCromatografica(BaseModel):
     descripcion: str = Field(..., description="Descripción de la condición cromatográfica")
 
 class Prueba(BaseModel):
+    id_prueba: Optional[str] = Field(
+        default=None,
+        description="Identificador único (UUID o hash) de la prueba dentro del método.",
+    )
     prueba: str = Field(..., description="Prueba del método analítico a la que se refiere el procedimiento.")
     procedimientos: str = Field(..., description="Descripción detallada de los procedimientos de la prueba analítica.")
     equipos: Optional[List[str]] = Field(..., description="Listado de Equipos declarados en la prueba")
@@ -171,6 +176,16 @@ def consolidar_pruebas_procesadas(
             logger.warning(f"No se encontró el archivo de prueba: {ruta_prueba}. Saltando.")
             continue
             
+        # Garantizar que el id_prueba venga incluido incluso si fue generado antes del cambio
+        if isinstance(ruta_prueba, str):
+            fallback_id = Path(ruta_prueba).stem
+        else:
+            fallback_id = None
+
+        if isinstance(prueba_dict, dict) and "id_prueba" not in prueba_dict and fallback_id:
+            prueba_dict = dict(prueba_dict)
+            prueba_dict["id_prueba"] = fallback_id
+
         try:
             # Valida el dict en el modelo Pydantic 'Prueba'
             prueba_obj = Prueba(**prueba_dict)

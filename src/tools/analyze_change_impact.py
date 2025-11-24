@@ -26,10 +26,27 @@ change_control_analysis_model = init_chat_model(model="openai:gpt-5-mini")
 CHANGE_IMPLEMENTATION_PLAN_PATH = "/new/change_implementation_plan.json"
 
 
+class FuentePrueba(BaseModel):
+    origen: Literal["side_by_side_actual", "side_by_side_modificacion", "reference_method"] = Field(
+        description="Fuente de la información usada como referencia: side_by_side_actual, side_by_side_modificacion o reference_method"
+    )
+    prueba: str = Field(description="Nombre literal de la prueba tomada como referencia")
+    id_prueba: Optional[str] = Field(
+        default=None,
+        description="Identificador `id_prueba` asociado a la prueba de referencia (usar null si el documento no lo provee)",
+    )
+
+
 class ChangeImpactAction(BaseModel):
     cambio: str = Field(description="Texto del cambio descrito en el control de cambios")
-    pruebas_fuente: List[str] = Field(description="Pruebas identificadas en side-by-side o métodos de referencia")
+    pruebas_fuente: List[FuentePrueba] = Field(
+        description="Lista de pruebas de referencia utilizadas para justificar la acción (incluye origen, nombre e id_prueba cuando existe)"
+    )
     prueba_metodo_nuevo: str = Field(description="Nombre de la prueba en el método analítico nuevo que se ve impactada")
+    id_prueba_metodo_nuevo: Optional[str] = Field(
+        default=None,
+        description="Identificador `id_prueba` correspondiente a la prueba del método analítico nuevo (usar null si no existe)",
+    )
     accion: Literal["replace","append","noop","investigar"] = Field(description="Acción sugerida: replace, append, noop, investigar")
     justificacion: str = Field(description="Razonamiento de la acción sugerida")
     patch: Optional[List[dict[str, Any]]] = Field(default=None, description="Operaciones JSON Patch para aplicar sobre /new/new_method_final.json")
@@ -44,7 +61,7 @@ Debes analizar el siguiente contexto estructurado y producir un plan de implemen
 
 Consideraciones clave:
 1. Cada ítem de `cambios` describe una modificación propuesta. Determina si corresponde a una prueba ya existente en el método nuevo.
-2. Usa los nombres de pruebas en `pruebas_metodo_nuevo`, `pruebas_side_by_side` y `pruebas_referencia` para identificar equivalencias.
+  2. Usa los nombres (`prueba`) e identificadores (`id_prueba`, cuando exista) de `pruebas_metodo_nuevo`, de `pruebas_side_by_side.metodo_actual` / `pruebas_side_by_side.metodo_modificacion_propuesta` y de `pruebas_referencia.pruebas` para identificar equivalencias.
 3. Si el cambio corresponde a una prueba existente, propone `accion = "replace"` y describe el patch JSON que actualizaría la información relevante.
 4. Si el cambio introduce una prueba nueva, propone `accion = "append"` con un patch que agregue la prueba en la ruta `/pruebas/-` del método nuevo. Incluye la estructura mínima esperada (nombre de prueba y campos clave a completar más adelante).
 5. Si no es posible determinar la acción, utiliza `accion = "investigar"` y explica qué información hace falta.
@@ -56,8 +73,15 @@ Devuelve tu respuesta en el siguiente formato JSON:
   "plan": [
     {{
       "cambio": "texto del cambio",
-      "pruebas_fuente": ["lista de pruebas usadas como referencia"],
+      "pruebas_fuente": [
+        {{
+          "origen": "side_by_side_actual" | "side_by_side_modificacion" | "reference_method",
+          "prueba": "nombre de la prueba de referencia",
+          "id_prueba": "identificador `id_prueba` o null si no existe"
+        }}
+      ],
       "prueba_metodo_nuevo": "nombre coincidido o null si no aplica",
+      "id_prueba_metodo_nuevo": "identificador `id_prueba` o null si no existe",
       "accion": "replace" | "append" | "noop" | "investigar",
       "justificacion": "explicación concisa",
       "patch": [
@@ -70,6 +94,7 @@ Devuelve tu respuesta en el siguiente formato JSON:
 ```
 
 Contexto estructurado:
+En `pruebas_metodo_nuevo`, `pruebas_side_by_side.metodo_actual`, `pruebas_side_by_side.metodo_modificacion_propuesta` y `pruebas_referencia.pruebas` cada elemento incluye `prueba` e `id_prueba` (si el identificador existe en el documento fuente).
 <context>
 {context}
 </context>
@@ -119,16 +144,32 @@ def _normalize_name(name: Optional[str]) -> Optional[str]:
     return " ".join(normalized.split())
 
 
-def _collect_prueba_names(pruebas: list[Prueba] | list[dict[str, Any]]) -> list[str]:
-    names: list[str] = []
+def _collect_prueba_records(pruebas: list[Prueba] | list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Devuelve pares {prueba, id_prueba?} preservando el identificador cuando esté disponible."""
+
+    records: list[dict[str, str]] = []
     for prueba in pruebas or []:
+        nombre: Optional[str] = None
+        prueba_id: Optional[str] = None
+
         if isinstance(prueba, Prueba):
-            names.append(prueba.prueba)
+            nombre = prueba.prueba
+            prueba_id = prueba.id_prueba
         elif isinstance(prueba, dict):
             value = prueba.get("prueba")
             if isinstance(value, str):
-                names.append(value)
-    return names
+                nombre = value
+            id_value = prueba.get("id_prueba")
+            if isinstance(id_value, str):
+                prueba_id = id_value
+
+        if isinstance(nombre, str):
+            record: dict[str, str] = {"prueba": nombre}
+            if isinstance(prueba_id, str) and prueba_id.strip():
+                record["id_prueba"] = prueba_id.strip()
+            records.append(record)
+
+    return records
 
 
 @tool(description=CHANGE_CONTROL_ANALYSIS_TOOL_DESCRIPTION)
@@ -181,27 +222,33 @@ def analyze_change_impact(
         for item in cc_model.descripcion_cambio
     ]
 
-    side_by_side_context = {
-        "metodo_actual": _collect_prueba_names(sbs_model.metodo_actual) if sbs_model else [],
-        "metodo_modificacion_propuesta": _collect_prueba_names(sbs_model.metodo_modificacion_propuesta) if sbs_model else [],
-    }
+    side_by_side_context = (
+        {
+            #"metodo_actual": _collect_prueba_records(sbs_model.metodo_actual),
+            "metodo_modificacion_propuesta": _collect_prueba_records(sbs_model.metodo_modificacion_propuesta),
+        }
+        if sbs_model
+        else None
+    )
 
-    reference_context = _collect_prueba_names(ref_model.pruebas) if ref_model else []
+    reference_context = (
+        {
+            "disponible": True,
+            "pruebas": _collect_prueba_records(ref_model.pruebas),
+        }
+        if ref_model
+        else {"disponible": False, "pruebas": []}
+    )
 
-    new_method_tests = []
+    new_method_tests: list[dict[str, str]] = []
     if isinstance(new_method_payload, dict):
         pruebas_data = new_method_payload.get("pruebas", [])
-        new_method_tests = _collect_prueba_names(pruebas_data)
+        new_method_tests = _collect_prueba_records(pruebas_data)
 
     llm_context = {
         "cambios": changes_context,
-        "pruebas_side_by_side": side_by_side_context if sbs_model else None,
-        "pruebas_referencia": {
-            "disponible": True,
-            "pruebas": reference_context,
-        }
-        if ref_model
-        else None,
+        "pruebas_side_by_side": side_by_side_context,
+        "pruebas_referencia": reference_context,
         "pruebas_metodo_nuevo": new_method_tests,
     }
 
