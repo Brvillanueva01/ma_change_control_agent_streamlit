@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Annotated, Dict, Optional, Any
 
 from langchain.chat_models import init_chat_model
@@ -14,23 +15,30 @@ from src.models.structured_test_model import TestSolutions
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_BASE_PATH = "/actual_method"
 TEST_SOLUTION_MARKDOWN_DOC_NAME = "/actual_method/test_solution_markdown.json"
 TEST_SOLUTION_STRUCTURED_DIR = "/actual_method/test_solution_structured"
 TEST_SOLUTION_STRUCTURED_CONTENT = "/actual_method/test_solution_structured_content.json"
 
 
 # LLM para Herramientas
-llm_model = init_chat_model(model="openai:gpt-4.1-mini", temperature=0)
+llm_model = init_chat_model(model="openai:gpt-5-mini")
 
 @tool(description=TEST_SOLUTION_STRUCTURED_EXTRACTION_TOOL_DESC)
 def test_solution_structured_extraction(
     id: int,
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId] = "",
+    base_path: str = DEFAULT_BASE_PATH,
 ) -> Command:
     
+    base = (base_path or DEFAULT_BASE_PATH).rstrip("/")
+    markdown_doc = f"{base}/test_solution_markdown.json"
+    structured_dir = f"{base}/test_solution_structured"
+    structured_content = f"{base}/test_solution_structured_content.json"
+
     files = dict(state.get("files", {}))
-    test_solution_markdown = files.get(TEST_SOLUTION_MARKDOWN_DOC_NAME)
+    test_solution_markdown = files.get(markdown_doc)
     if not test_solution_markdown:
         message = "No se encontró el archivo de markdown para la solución de prueba."
         logger.warning(message)
@@ -95,12 +103,22 @@ def test_solution_structured_extraction(
     )
     test_solution_input = test_solution_input.model_dump()
 
-    test_solution_input["source_id"] = id
-    structured_file_path = f"{TEST_SOLUTION_STRUCTURED_DIR}/{id}.json"
+    # Validación: asegurar que solo haya un test (el LLM a veces duplica)
+    if "tests" in test_solution_input and isinstance(test_solution_input["tests"], list):
+        if len(test_solution_input["tests"]) > 1:
+            logger.warning(
+                f"LLM generó {len(test_solution_input['tests'])} tests, tomando solo el primero."
+            )
+            test_solution_input["tests"] = [test_solution_input["tests"][0]]
 
+    test_solution_input["source_id"] = id
+    structured_file_path = f"{structured_dir}/{id}.json"
+
+    content_str = json.dumps(test_solution_input, indent=2, ensure_ascii=False)
     files[structured_file_path] = {
-        "content": json.dumps(test_solution_input, indent=2, ensure_ascii=False),
+        "content": content_str.split("\n"),
         "data": test_solution_input,
+        "modified_at": datetime.now(timezone.utc).isoformat(),
     }
 
     summary_message = (

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from copy import deepcopy
+from datetime import datetime, timezone
 from typing import Annotated, Any, Optional, List, Tuple
 
 from langchain_core.messages import ToolMessage
@@ -104,9 +105,17 @@ def consolidate_new_method(
     output_path: str = METHOD_DEFAULT_PATH,
 ) -> Command:
     logger.info("Iniciando 'consolidate_new_method'")
-    files = state.get("files", {}) or {}
+    
+    # Archivos originales para leer entradas
+    source_files = dict(state.get("files", {}) or {})
+    
+    # Archivos base que queremos retener (sin las ramas paralelas de patches)
+    base_files = {
+        k: v for k, v in source_files.items()
+        if not k.startswith(patches_dir.rstrip("/") + "/")
+    }
 
-    base_payload = _load_json_payload(files, base_method_path)
+    base_payload = _load_json_payload(source_files, base_method_path)
     if base_payload is None:
         msg = f"No se encontro el metodo base en {base_method_path}."
         logger.error(msg)
@@ -130,7 +139,7 @@ def consolidate_new_method(
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
     working_method = base_model.model_dump(mode="json")
-    patches = _iter_patch_payloads(files, patches_dir)
+    patches = _iter_patch_payloads(source_files, patches_dir)
     consolidated_patch_paths: list[str] = [path for path, _ in patches]
 
     applied = 0
@@ -181,11 +190,9 @@ def consolidate_new_method(
     method_dump = validated.model_dump(mode="json")
     method_str = json.dumps(method_dump, ensure_ascii=False, indent=2)
 
-    files_update = dict(files)
-    files_update[output_path] = {"content": method_str, "data": method_dump}
-    for patch_path in consolidated_patch_paths:
-        if patch_path != output_path:
-            files_update.pop(patch_path, None)
+    # Resultado final: base_files + método consolidado
+    files_update = base_files.copy()
+    files_update[output_path] = {"content": method_str, "data": method_dump, "modified_at": datetime.now(timezone.utc).isoformat()}
 
     tool_message = (
         f"Metodo consolidado en {output_path}. "

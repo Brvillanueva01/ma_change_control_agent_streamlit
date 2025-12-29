@@ -24,9 +24,14 @@ change_control_subagent = {
 
 side_by_side_subagent = {
     "name": "side_by_side_agent",
-    "description": "Delega a este agente siempre que te entreguen un documento de side by side. Este agente se encargará de ejecutar las herramientas requeridas para generar un json estructurado con el método analítico en el formato nuevo",
+    "description": "Delega a este agente cuando te entreguen un documento Side-by-Side; extrae la columna del metodo propuesto y genera el JSON estructurado en /proposed_method/",
     "system_prompt": SIDE_BY_SIDE_AGENT_INSTRUCTIONS,
-    "tools": [extract_annex_cc],
+    "tools": [
+        sbs_proposed_column_to_pdf_md,
+        test_solution_clean_markdown_sbs,
+        test_solution_structured_extraction,
+        consolidate_test_solution_structured,
+    ],
     "model": "openai:gpt-5-mini"
 }
 

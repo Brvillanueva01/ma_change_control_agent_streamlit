@@ -37,30 +37,63 @@ PDF_DA_METADATA_TOC_TOOL_DESC = """
 # Test/Solution Clean Markdown tool description
 #############################################################################################################
 TEST_SOLUTION_CLEAN_MARKDOWN_TOOL_DESC = """
-  Lee el archivo `/actual_method/method_metadata_TOC.json`, usa el TOC completo para identificar pruebas y soluciones mediante un LLM y recorta el markdown específico de cada una. El resultado se almacena en `/actual_method/test_solution_markdown.json`, listo para las herramientas posteriores de extracción estructurada.
+  Lee el archivo `{base_path}/method_metadata_TOC.json`, usa el TOC completo para identificar pruebas y soluciones mediante un LLM y recorta el markdown específico de cada una. El resultado se almacena en `{base_path}/test_solution_markdown.json`, listo para las herramientas posteriores de extracción estructurada.
 
   ## Cuándo usar
-  - Ejecuta esta herramienta inmediatamente después de `pdf_da_metadata_toc`, dentro del Structured Extraction Agent.
+  - Ejecuta esta herramienta inmediatamente después de `pdf_da_metadata_toc`, dentro del Legacy Migration Agent.
   - Úsala siempre que necesites generar el listado de pruebas/soluciones con su markdown para alimentar las herramientas de limpieza y extracción estructurada.
 
   ## Buenas Prácticas
-  - **Precondición:** Asegúrate de que `state['files']` contenga `/actual_method/method_metadata_TOC.json` con `tabla_de_contenidos` (incluida hasta el último subnivel) y `full_markdown`.
-  - **Detección de encabezados:** El LLM (`gpt-4.1-mini`) produce un objeto `TestMethodsfromTOC`; cada entrada debe tener `raw`, `section_id` y `title`. Si el TOC lista soluciones individuales (ej. “Solución Hidróxido de potasio”), se capturan como elementos separados.
-  - **Extracción de markdown:** El código compara los encabezados contra `full_markdown` para recortar el texto entre encabezados consecutivos. Evita modificar manualmente el markdown consolidado.
-  - **Sin parámetros externos:** La herramienta solo usa el estado compartido, por lo que no requiere rutas adicionales ni prompts personalizados.
+  - **Precondición:** Asegúrate de que `state['files']` contenga `{base_path}/method_metadata_TOC.json` con `tabla_de_contenidos` (incluida hasta el último subnivel) y `markdown_completo`.
+  - **Pre-procesamiento:** Esta herramienta elimina automáticamente la TABLA DE CONTENIDO y extrae SOLO la sección PROCEDIMIENTOS/DESARROLLO para evitar duplicados de ESPECIFICACIONES.
+  - **Detección de encabezados:** El LLM (`gpt-5-mini`) produce un objeto `TestMethodsFromChunk`; cada entrada debe tener `raw`, `section_id` y `title`.
+  - **Extracción de markdown:** El código compara los encabezados contra el markdown pre-procesado para recortar el texto entre encabezados consecutivos.
 
   ## Parámetros
-  - No recibe parámetros adicionales. Se invoca simplemente como `test_solution_clean_markdown(state=..., tool_call_id=...)`.
+  - `base_path (str)`: Ruta base donde se encuentran los archivos. Default: `/actual_method`.
 
   ## Salida y efectos en el estado
   - **ToolMessage:** Reporta cuántas pruebas/soluciones se generaron y cuántas obtuvieron markdown.
-  - **Estado (`state['files']`):** Crea/actualiza `/actual_method/test_solution_markdown.json` con:
+  - **Estado (`state['files']`):** Crea/actualiza `{base_path}/test_solution_markdown.json` con:
     - `full_markdown`: texto consolidado del método.
     - `toc_entries`: TOC usado para la inferencia.
     - `items`: lista de `{raw, title, section_id, markdown}` para cada prueba o solución.
 
   ## Siguiente Paso Esperado
   - Con este archivo disponible, ejecuta `test_solution_structured_extraction` u otras herramientas que consumen los segmentos de markdown para producir test methods parametrizados o textos limpios.
+"""
+
+#############################################################################################################
+# Test/Solution Clean Markdown SBS (Side-by-Side) tool description
+#############################################################################################################
+TEST_SOLUTION_CLEAN_MARKDOWN_SBS_TOOL_DESC = """
+  Versión especializada para documentos Side-by-Side. Lee el archivo `{base_path}/method_metadata_TOC.json` generado por `sbs_proposed_column_to_pdf_md` y extrae pruebas/soluciones del markdown de la columna propuesta.
+
+  ## Cuándo usar
+  - Ejecuta esta herramienta inmediatamente después de `sbs_proposed_column_to_pdf_md`, dentro del Side-by-Side Agent.
+  - Úsala para procesar documentos comparativos donde ya se extrajo la columna del método propuesto.
+
+  ## Diferencias con `test_solution_clean_markdown`
+  - **Sin pre-procesamiento de sección PROCEDIMIENTOS:** El markdown ya viene filtrado por columna desde `sbs_proposed_column_to_pdf_md`.
+  - **Prompt genérico:** No asume estructura de secciones numeradas (PROCEDIMIENTOS, ESPECIFICACIONES, etc.).
+  - **Optimizado para Side-by-Side:** Diseñado para documentos comparativos con formato de tabla.
+
+  ## Buenas Prácticas
+  - **Precondición:** Asegúrate de que `state['files']` contenga `{base_path}/method_metadata_TOC.json` con `markdown_completo` (columna propuesta).
+  - **Ruta típica:** Usa `base_path="/proposed_method"` para documentos Side-by-Side.
+
+  ## Parámetros
+  - `base_path (str)`: Ruta base donde se encuentran los archivos. Default: `/actual_method` (pero típicamente se usa `/proposed_method`).
+
+  ## Salida y efectos en el estado
+  - **ToolMessage:** Reporta cuántas pruebas/soluciones se generaron y cuántas obtuvieron markdown.
+  - **Estado (`state['files']`):** Crea/actualiza `{base_path}/test_solution_markdown.json` con:
+    - `full_markdown`: texto consolidado del método propuesto.
+    - `toc_entries`: encabezados identificados.
+    - `items`: lista de `{raw, title, section_id, markdown}` para cada prueba o solución.
+
+  ## Siguiente Paso Esperado
+  - Con este archivo disponible, ejecuta `test_solution_structured_extraction(base_path="/proposed_method")` para estructurar cada prueba.
 """
 
 #############################################################################################################

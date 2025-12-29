@@ -2,10 +2,13 @@
 import json
 import logging
 import os
+import re
 import time
 import tempfile
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, Annotated
 
@@ -252,6 +255,51 @@ def _model_instance_to_dict(
             return {"data": model_instance}
 
     return {"data": str(model_instance)}
+
+
+def _normalize_heading_text(text: str) -> str:
+    """Normaliza encabezados para comparaciones insensibles a tildes/espacios."""
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", text)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = normalized.lower()
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
+def _build_toc_markdown_metrics(
+    toc_entries: Optional[List[str]], markdown_text: str
+) -> Dict[str, Any]:
+    """Compara la TOC contra el markdown consolidado y genera métricas de calidad."""
+    toc_entries = toc_entries or []
+    normalized_markdown = _normalize_heading_text(markdown_text or "")
+
+    metrics = {
+        "toc_entries": len(toc_entries),
+        "matched_entries": 0,
+        "missing_entries": [],
+        "duplicate_entries": [],
+    }
+
+    seen_keys: set[str] = set()
+    for idx, heading in enumerate(toc_entries):
+        normalized_heading = _normalize_heading_text(heading)
+        if not normalized_heading:
+            metrics["missing_entries"].append({"index": idx, "heading": heading})
+            continue
+
+        if normalized_heading in seen_keys:
+            metrics["duplicate_entries"].append({"index": idx, "heading": heading})
+        else:
+            seen_keys.add(normalized_heading)
+
+        if normalized_heading in normalized_markdown:
+            metrics["matched_entries"] += 1
+        else:
+            metrics["missing_entries"].append({"index": idx, "heading": heading})
+
+    return metrics
 
 
 def _build_full_model_with_markdown(
@@ -521,17 +569,23 @@ def pdf_da_metadata_toc(
     # 6. Guardar JSON estructurado del metodo completo
     if full_model_instance:
         serialized_data = _model_instance_to_dict(full_model_instance)
+        toc_metrics = _build_toc_markdown_metrics(
+            serialized_data.get("tabla_de_contenidos"), full_markdown
+        )
+        serialized_data["toc_validation_metrics"] = toc_metrics
         full_json_string = json.dumps(
             serialized_data, indent=2, ensure_ascii=False
         )
         files[document_name] = {
-            "content": full_json_string,
+            "content": full_json_string.split("\n"),
             "data": serialized_data,
+            "modified_at": datetime.now(timezone.utc).isoformat(),
         }
     else:
         files[document_name] = {
-            "content": "{}",
+            "content": ["{}"],
             "data": {},
+            "modified_at": datetime.now(timezone.utc).isoformat(),
         }
 
 

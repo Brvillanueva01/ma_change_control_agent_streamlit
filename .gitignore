@@ -190,4 +190,8 @@ vectorstores/
 
 src/output/
 
-stc/images/
+src/images/
+
+notebooks/
+
+src/tests

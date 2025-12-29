@@ -1,11 +1,73 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
-from src.models.structured_test_model import TestSolutions
+from __future__ import annotations
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field, model_validator
+import re
 
 class SideBySideModel(BaseModel):
-    control_cambio: Optional[str] = Field(..., description="Código de Control de Cambio. Inicia con SC y se encuentra en el encabezado del documento.")
-    nombre_anexo: Optional[str] = Field(..., description="Nombre del anexo. Se encuentra en el encabezado del documento.")
-    codigo_producto: Optional[int] = Field(..., description="Código del producto o materia prima. Puede iniciar por 10 o 40 o 30. Se encuentra en el encabezado del documento.")
+    apis: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Listado literal de los ingredientes activos (APIs) tal como aparecen en los encabezados o notas "
+            "del método propuesto (p.ej. 'NAPROXENO SÓDICO 10-0514 Versión 02'). "
+            "Preservar mayúsculas, potencias, sales y sinónimos, así como los separadores originales. "
+            "Si se listan múltiples APIs, mantener el orden textual exacto."
+        ),
+    )
+    nombre_producto: Optional[str] = Field(
+        None,
+        description=(
+            "Nombre comercial/técnico del producto tal como aparece en el bloque principal de encabezado de la columna propuesta. "
+            "Incluir códigos de cambio, versión o notas si comparten la misma línea (p.ej. 'SC-25-777 MODIFICACIÓN PROPUESTA'). "
+            "Ignorar repeticiones en pies de página y mantener exactamente el formato, mayúsculas y potencias."
+        ),
+    )
+    tabla_de_contenidos: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Lista ORDENADA de los títulos principales (Nivel 1) de la columna propuesta. "
+            "Solo incluir encabezados que aparecen como bloques separados (p.ej. 'IDENTIFICACIÓN A (IR) (USP)'), "
+            "sin repetir descripciones, criterios de aceptación, procedimientos ni notas internas. "
+            "Instrucciones: "
+            "1. CITA TEXTUAL: copiar cada encabezado exactamente como en el PDF (mantener mayúsculas, tildes, siglas USP/<232>, etc.). "
+            "2. NIVEL: registrar únicamente los encabezados de prueba o sección (DESCRIPCIÓN, PUNTO DE FUSIÓN, LÍMITE DE NAPROXENO LIBRE...). "
+            "3. EXCLUSIONES: NO incluir subtítulos como 'Soluciones', 'Procedimiento', 'Criterio de aceptación', notas u observaciones. "
+            "4. ORDEN: respetar el orden de aparición desde la parte superior hasta la inferior del documento. "
+            "5. FORMATO: devolver un elemento de lista por encabezado, sin prefijos adicionales ni numeraciones artificiales."
+        ),
+    )
 
-    metodo_actual: Optional[List[TestSolutions]] = Field(..., description="Listado de pruebas del método actual que incluye toda la información reportada en el documento. Todas las pruebas del metodo actual se encuentran en la tabla en el lado izquierdo del documento.")
-    metodo_modificacion_propuesta: Optional[List[TestSolutions]] = Field(..., description="Listado de pruebas del método modificación propuesta que incluye toda la información reportada en el documento. Todas las pruebas del metodo modificación propuesta se encuentran en la tabla en el lado derecho del documento.")
+class SideBySideModelCompleto(BaseModel):
+    apis: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Listado literal de los ingredientes activos (APIs) tal como aparecen en los encabezados o notas "
+            "del método propuesto (p.ej. 'NAPROXENO SÓDICO 10-0514 Versión 02'). "
+            "Preservar mayúsculas, potencias, sales y sinónimos, así como los separadores originales. "
+            "Si se listan múltiples APIs, mantener el orden textual exacto."
+        ),
+    )
+    nombre_producto: Optional[str] = Field(
+        None,
+        description=(
+            "Nombre comercial/técnico del producto tal como aparece en el bloque principal de encabezado de la columna propuesta. "
+            "Incluir códigos de cambio, versión o notas si comparten la misma línea (p.ej. 'SC-25-777 MODIFICACIÓN PROPUESTA'). "
+            "Ignorar repeticiones en pies de página y mantener exactamente el formato, mayúsculas y potencias."
+        ),
+    )
+    tabla_de_contenidos: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Misma lista ORDENADA de títulos principales (Nivel 1) descrita en `SideBySideModel`. "
+            "Debe contener únicamente las pruebas de la columna propuesta (DESCRIPCIÓN, PUNTO DE FUSIÓN, IDENTIFICACIÓN A/B, etc.), "
+            "copiadas literalmente con sus paréntesis USP/BP/EP cuando apliquen. "
+            "Excluir subtítulos internos como 'Soluciones', 'Procedimiento', 'Criterio de aceptación', notas o cálculos."
+        ),
+    )
+    markdown_completo: str = Field(
+        ...,
+        description=(
+            "Markdown completo de la columna del método propuesto, preservando el orden y el formato del PDF (listas, tablas, notas en negrilla). "
+            "Debe incluir encabezados, subtítulos, procedimientos, criterios de aceptación, notas regulatorias y cualquier comentario 'Se elimina la prueba'. "
+            "Mantener el idioma original y no alterar la ortografía; únicamente convertir a markdown respetando saltos y jerarquías."
+        ),
+    )

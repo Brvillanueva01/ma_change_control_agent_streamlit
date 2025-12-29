@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Annotated, Any, Optional, Literal, List
 
 from langchain.chat_models import init_chat_model
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 change_control_analysis_model = init_chat_model(model="openai:gpt-5-mini")
 
 CHANGE_IMPLEMENTATION_PLAN_PATH = "/new/change_implementation_plan.json"
+PROPOSED_METHOD_DEFAULT_PATH = "/proposed_method/test_solution_structured_content.json"
 
 
 # --- Modelos Pydantic ---
@@ -592,6 +594,11 @@ def _invoke_llm_with_retry(llm_structured, human_prompt: str, system_prompt: str
 def analyze_change_impact(
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
+    proposed_method_path: str = PROPOSED_METHOD_DEFAULT_PATH,
+    side_by_side_path: str = SIDE_BY_SIDE_DEFAULT_PATH,
+    legacy_method_path: str = LEGACY_METHOD_DEFAULT_PATH,
+    reference_methods_path: str = REFERENCE_METHOD_DEFAULT_PATH,
+    change_control_path: str = CHANGE_CONTROL_DEFAULT_PATH,
 ) -> Command:
     """
     Analiza el impacto de cambios y genera un plan de intervención detallado.
@@ -620,14 +627,22 @@ def analyze_change_impact(
     # --- Paso 1: Cargar payloads ---
     logger.info("Cargando archivos necesarios...")
     
-    cc_payload = _load_json_payload(files, CHANGE_CONTROL_DEFAULT_PATH)
-    sbs_payload = _load_json_payload(files, SIDE_BY_SIDE_DEFAULT_PATH)
-    ref_payload = _load_json_payload(files, REFERENCE_METHOD_DEFAULT_PATH)
-    legacy_payload = _load_json_payload(files, LEGACY_METHOD_DEFAULT_PATH)
+    cc_payload = _load_json_payload(files, change_control_path)
+    raw_sbs_payload = _load_json_payload(files, side_by_side_path)
+    proposed_payload = _load_json_payload(files, proposed_method_path)
+    ref_payload = _load_json_payload(files, reference_methods_path)
+    legacy_payload = _load_json_payload(files, legacy_method_path)
+
+    # Preferir el método propuesto estructurado si existe; si no, usar side-by-side tradicional
+    if proposed_payload:
+        sbs_payload = {"metodo_modificacion_propuesta": proposed_payload}
+        logger.info("Usando metodo propuesto de /proposed_method/ para side-by-side.")
+    else:
+        sbs_payload = raw_sbs_payload
     
     # Validar archivo crítico
     if cc_payload is None:
-        msg = f"ERROR: No se encontró el archivo de control de cambios en {CHANGE_CONTROL_DEFAULT_PATH}."
+        msg = f"ERROR: No se encontró el archivo de control de cambios en {change_control_path}."
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
     
@@ -740,6 +755,7 @@ def analyze_change_impact(
     files_update[CHANGE_IMPLEMENTATION_PLAN_PATH] = {
         "content": json.dumps(plan_payload, ensure_ascii=False, indent=2),
         "data": plan_payload,
+        "modified_at": datetime.now(timezone.utc).isoformat(),
     }
     
     logger.info(f"✓ Plan guardado en {CHANGE_IMPLEMENTATION_PLAN_PATH}")

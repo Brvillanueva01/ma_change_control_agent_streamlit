@@ -1,176 +1,184 @@
 TEST_METHOD_GENERATION_TOC_PROMPT = """
-  Eres un químico analítico senior especializado en métodos farmacéuticos. Recibirás la tabla de contenidos
-  de un método analítico como un bloque de texto (`toc_string`). Tu misión es identificar, en orden, únicamente:
+Eres un químico analítico senior especializado en métodos farmacéuticos. Recibirás la tabla de contenidos
+de un método analítico como un bloque de texto (`toc_string`). Tu misión es identificar, en orden, únicamente:
 
-  - **Pruebas analíticas** (ensayos, identificaciones, valoraciones, disoluciones, estudios de impurezas, etc.) que estén bajo la sección de PROCEDIMIENTO*, PROCEDIMIENTOS*, DESARROLLO* (o nombres equivalentes), _incluyendo también las pruebas explícitas bajo PROCEDIMIENTOS que tengan encabezados como DESCRIPCIÓN DEL EMPAQUE o DESCRIPCIÓN_, pero nunca desde una sección que se titule "ESPECIFICACIONES" o equivalentes.
+- **Pruebas analíticas** (ensayos, identificaciones, valoraciones, disoluciones, estudios de impurezas, etc.) que estén bajo la sección de PROCEDIMIENTO*, PROCEDIMIENTOS*, DESARROLLO* (o nombres equivalentes), _incluyendo también las pruebas explícitas bajo PROCEDIMIENTOS que tengan encabezados como DESCRIPCIÓN DEL EMPAQUE o DESCRIPCIÓN_, pero nunca desde una sección que se titule "ESPECIFICACIONES" o equivalentes.
 
-  Devuelve el resultado en un JSON que cumpla exactamente con este esquema:
+Devuelve el resultado en un JSON que cumpla exactamente con este esquema:
 
-  ```json
-  {{
-    "test_methods": [
-      {{
-        "raw": "Texto exacto del encabezado tal como aparece en el TOC",
-        "section_id": "Numeración jerárquica (5.3, 5.3.2.4, etc.) o null si no existe",
-        "title": "Nombre descriptivo sin numeración u observaciones"
-      }}
-    ]
-  }}
-  ```
+```json
+{{
+  "test_methods": [
+    {{
+      "raw": "Texto exacto del encabezado tal como aparece en el TOC",
+      "section_id": "Numeración jerárquica (5.3, 5.3.2.4, etc.) o null si no existe",
+      "title": "Nombre descriptivo sin numeración u observaciones"
+    }}
+  ]
+}}
+```
 
-  ## Instrucciones clave
-  1. **Únicamente pruebas principales:** Recorre el TOC de arriba hacia abajo y solo captura aquellas entradas que:
-    - Sean explícitamente una prueba analítica (ej. `5.3 UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)`) y estén bajo PROCEDIMIENTO* o DESARROLLO* (o nombres equivalentes), nunca bajo la sección "ESPECIFICACIONES" o equivalentes.
-    - Corresponden al **encabezado principal del ensayo** (ej. `7.4 IDENTIFICACION (USP)`). Si un encabezado tiene numeraciones adicionales (p. ej. `7.4.1`, `7.4.2.3`), considera que es un subapartado y **debe ignorarse** aunque mencione una prueba.
-    - _Incluye las pruebas de descripción y empaque (por ejemplo, “DESCRIPCIÓN DEL EMPAQUE”, “DESCRIPCIÓN”) si aparecen bajo PROCEDIMIENTO* o nombres equivalentes, siendo consideradas pruebas analíticas principales cuando así estén explícitamente en la sección correspondiente._
-  2. **Filtrado:** Ignora cualquier otro encabezado, incluidos subapartados de pruebas (Equipos, Reactivos, Procedimiento, Cálculos, Condiciones, etc.), encabezados generales fuera de procedimientos o desarrollo (objetivo, alcance, anexos, históricos, materiales, definiciones, etc.), y cualquier entrada bajo "ESPECIFICACIONES".
-  3. **Texto exacto (limpio):** El campo `raw` debe copiar literalmente el encabezado del TOC, pero en el momento en que aparezca el primer carácter `<` debes **recortar todo lo que sigue** (incluyendo el propio `<`, sus parejas `>` y cualquier texto adicional como referencias USP o notas entre paréntesis). Esto garantiza que el texto resultante pueda buscarse directamente en el markdown. No inventes, completes ni resumas nombres de encabezados. No extraigas pruebas mencionadas fuera del TOC ni intentes deducir nombres de pruebas a partir de otros textos fuera del propio TOC.
-  4. **`title` sin numeración:** Limpia el número jerárquico y deja solo el nombre legible, aplicando la misma regla de recorte descrita en el punto anterior (nada después del primer `<`).
-  5. **`section_id` preciso:** Copia la numeración completa (ej. `5.3.2.1`). Si el encabezado no tiene número, usa `null`. Nunca reconstruyas numeraciones ausentes.
-  6. **Multiplicidad:** Si la misma prueba aparece varias veces (p.ej. disolución para diferentes APIs), crea una entrada separada por cada encabezado listado. No repitas subapartados derivados del mismo ensayo; cada prueba principal debe aparecer solo una vez.
-  7. **Orden original:** Mantén el orden original del TOC. No reordenes ni agrupes secciones distintas.
-  8. **No omitas ensayos analíticos**: Si hay pruebas principales de microbiología u otras especializadas (como "CONTROL MICROBIOLÓGICO") bajo PROCEDIMIENTO* o DESARROLLO*, inclúyelas exactamente como aparecen en el TOC si cumplen los filtros anteriores. _Incluye también las pruebas de descripción y empaque si aparecen explícitamente como pruebas bajo PROCEDIMIENTOS._
-  9. **Reporta únicamente lo explícito:** Las pruebas que aparecen nombradas explícitamente en el TOC pueden ir en la lista. No nombres pruebas sólo porque aparecen en una leyenda aparte o porque has visto esa prueba en otros métodos similares.
+## Instrucciones clave
+1. **Únicamente pruebas principales:** Recorre el TOC de arriba hacia abajo y solo captura aquellas entradas que:
+   - Sean explícitamente una prueba analítica (ej. `5.3 UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)`) y estén bajo PROCEDIMIENTO* o DESARROLLO* (o nombres equivalentes), nunca bajo la sección "ESPECIFICACIONES" o equivalentes.
+   - Corresponden al **encabezado principal del ensayo** (ej. `7.4 IDENTIFICACION (USP)`). Si un encabezado tiene numeraciones adicionales (p. ej. `7.4.1`, `7.4.2.3`), considera que es un subapartado y **debe ignorarse** aunque mencione una prueba.
+   - _Incluye las pruebas de descripción y empaque (por ejemplo, "DESCRIPCIÓN DEL EMPAQUE", "DESCRIPCIÓN") si aparecen bajo PROCEDIMIENTO* o nombres equivalentes, siendo consideradas pruebas analíticas principales cuando así estén explícitamente en la sección correspondiente._
+2. **Filtrado:** Ignora cualquier otro encabezado, incluidos subapartados de pruebas (Equipos, Reactivos, Procedimiento, Cálculos, Condiciones, etc.), encabezados generales fuera de procedimientos o desarrollo (objetivo, alcance, anexos, históricos, materiales, definiciones, etc.), y cualquier entrada bajo "ESPECIFICACIONES".
+3. **Texto exacto (limpio):** El campo `raw` debe copiar literalmente el encabezado del TOC, pero en el momento en que aparezca el primer carácter `<` debes **recortar todo lo que sigue** (incluyendo el propio `<`, sus parejas `>` y cualquier texto adicional como referencias USP o notas entre paréntesis). Esto garantiza que el texto resultante pueda buscarse directamente en el markdown. No inventes, completes ni resumas nombres de encabezados. No extraigas pruebas mencionadas fuera del TOC ni intentes deducir nombres de pruebas a partir de otros textos fuera del propio TOC.
+4. **`title` sin numeración:** Limpia el número jerárquico y deja solo el nombre legible, aplicando la misma regla de recorte descrita en el punto anterior (nada después del primer `<`).
+5. **`section_id` preciso:** Copia la numeración completa (ej. `5.3.2.1`). Si el encabezado no tiene número, usa `null`. Nunca reconstruyas numeraciones ausentes.
+6. **Multiplicidad:** Si la misma prueba aparece varias veces (p.ej. disolución para diferentes APIs), crea una entrada separada por cada encabezado listado. No repitas subapartados derivados del mismo ensayo; cada prueba principal debe aparecer solo una vez.
+7. **Orden original:** Mantén el orden original del TOC. No reordenes ni agrupes secciones distintas.
+8. **No omitas ensayos analíticos**: Si hay pruebas principales de microbiología u otras especializadas (como "CONTROL MICROBIOLÓGICO") bajo PROCEDIMIENTO* o DESARROLLO*, inclúyelas exactamente como aparecen en el TOC si cumplen los filtros anteriores. _Incluye también las pruebas de descripción y empaque si aparecen explícitamente como pruebas bajo PROCEDIMIENTOS._
+9. **Reporta únicamente lo explícito:** Las pruebas que aparecen nombradas explícitamente en el TOC pueden ir en la lista. No nombres pruebas sólo porque aparecen en una leyenda aparte o porque has visto esa prueba en otros métodos similares.
 
-  ## Buenas prácticas
-  - Solo responde con los ítems presentes en el TOC recibido.
-  - Respeta siglas y mayúsculas tal como aparecen.
-  - Si el TOC contiene encabezados duplicados, considera únicamente la primera ocurrencia.
-  - Cuando el TOC no usa el término "procedimiento" pero la sección es un ensayo y está bajo PROCEDIMIENTO* o DESARROLLO*, trátala como prueba principal solo si no está bajo "ESPECIFICACIONES".
-    - _Considera a “DESCRIPCIÓN DEL EMPAQUE” y “DESCRIPCIÓN” como pruebas principales cuando estén explícitamente bajo PROCEDIMIENTOS._
+## Buenas prácticas
+- Solo responde con los ítems presentes en el TOC recibido.
+- Respeta siglas y mayúsculas tal como aparecen.
+- Si el TOC contiene encabezados duplicados, considera únicamente la primera ocurrencia.
+- Cuando el TOC no usa el término "procedimiento" pero la sección es un ensayo y está bajo PROCEDIMIENTO* o DESARROLLO*, trátala como prueba principal solo si no está bajo "ESPECIFICACIONES".
+  - _Considera a "DESCRIPCIÓN DEL EMPAQUE" y "DESCRIPCIÓN" como pruebas principales cuando estén explícitamente bajo PROCEDIMIENTOS._
 
-  ## Ejemplo
-  Suponiendo el siguiente fragmento del TOC:
-  ```
-  5 PROCEDIMIENTOS
-  5.1 DESCRIPCIÓN DEL EMPAQUE (INTERNA)
-  5.2 DESCRIPCIÓN (INTERNA)
-  5.3 UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)
-  ```
-  **Salida parcial**
-  ```json
-  {{
-    "test_methods": [
-      {{
-        "raw": "5.1 DESCRIPCIÓN DEL EMPAQUE (INTERNA)",
-        "section_id": "5.1",
-        "title": "DESCRIPCIÓN DEL EMPAQUE (INTERNA)"
-      }},
-      {{
-        "raw": "5.2 DESCRIPCIÓN (INTERNA)",
-        "section_id": "5.2",
-        "title": "DESCRIPCIÓN (INTERNA)"
-      }},
-      {{
-        "raw": "5.3 UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)",
-        "section_id": "5.3",
-        "title": "UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)"
-      }}
-    ]
-  }}
-  ```
+## Ejemplo
+Suponiendo el siguiente fragmento del TOC:
+```
+5 PROCEDIMIENTOS
+5.1 DESCRIPCIÓN DEL EMPAQUE (INTERNA)
+5.2 DESCRIPCIÓN (INTERNA)
+5.3 UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)
+```
+**Salida parcial**
+```json
+{{
+  "test_methods": [
+    {{
+      "raw": "5.1 DESCRIPCIÓN DEL EMPAQUE (INTERNA)",
+      "section_id": "5.1",
+      "title": "DESCRIPCIÓN DEL EMPAQUE (INTERNA)"
+    }},
+    {{
+      "raw": "5.2 DESCRIPCIÓN (INTERNA)",
+      "section_id": "5.2",
+      "title": "DESCRIPCIÓN (INTERNA)"
+    }},
+    {{
+      "raw": "5.3 UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)",
+      "section_id": "5.3",
+      "title": "UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)"
+    }}
+  ]
+}}
+```
 """
 
 
 TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT = """
-  Rol: quimico analitico senior especializado en metodos farmaceuticos. Recibiras el markdown completo de **una sola** prueba o solucion (encabezado, numeracion y texto literal del metodo). Convierte esa entrada en un objeto `TestSolutions` que cumpla estrictamente con los modelos Pydantic provistos.
+# RESTRICCIÓN ABSOLUTA: GENERA EXACTAMENTE 1 TEST
+El array `tests` en tu respuesta DEBE contener UN SOLO objeto. Si generas más de 1 elemento, tu respuesta será RECHAZADA. No dupliques contenido bajo ninguna circunstancia.
 
-  ## Entrada
-  ```markdown
-  {test_solution_string}
-  ```
+Rol: quimico analitico senior especializado en metodos farmaceuticos. Recibiras el markdown completo de **una sola** prueba o solucion (encabezado, numeracion y texto literal del metodo). Convierte esa entrada en un objeto `TestSolutions` que cumpla estrictamente con los modelos Pydantic provistos.
 
-  ## Objetivo
-  - Identificar `section_id`, `section_title`, `test_name` y `test_type` de la prueba/solucion.
-  - Extraer toda la informacion estructurada disponible siguiendo el modelo `TestSolutions`.
-  - No inventes datos ni reformules el texto: si algo no aparece, deja `null` o listas vacias.
+## Entrada
+```markdown
+{test_solution_string}
+```
 
-  ## Instrucciones de extraccion
-  1. **Section/title/test_name:** Usa la numeracion y el encabezado literal. Si no hay titulo o nombre de prueba, escribe "Por definir".
-  2. **Test type:** Elige solo entre estos valores: "Descripcion", "Identificacion", "Valoracion", "Impurezas", "Peso promedio", "Disolucion", "Uniformidad de contenido", "Control microbiologico", "Humedad en cascarilla", "Humedad en contenido", "Dureza", "Espesores", "Uniformidad de unidades de dosificacion", "Perdida por Secado", "Check list de autorizacion", "Hoja de trabajo instrumental HPLC", "Solucion", "Otros analisis". Si no es obvio, selecciona la etiqueta mas cercana al texto.
-  3. **Texto literal siempre:** Respeta ortografia, mayusculas y simbolos del documento. No resumes ni corriges. Si un campo es opcional y no hay informacion, usa `null` o `[]`.
-  4. **Condiciones cromatograficas:** Si se listan columna, fase movil, flujo, temperatura o gradiente, llevalas a `condiciones_cromatograficas` con pares `nombre_condicion`/`valor_condicion`. Si hay tabla de gradiente, usa `tabla_gradiente` (tiempo, proporcion_a, proporcion_b). Notas adicionales van en `notas`.
-  5. **Soluciones:** Captura cada encabezado de solucion/fase movil/buffer/diluyente de esta prueba. `nombre_solucion` es el encabezado literal. `preparacion_solucion` es el bloque completo de preparacion copiado tal cual, desde la linea debajo del encabezado hasta antes del siguiente encabezado de solucion, procedimiento o criterio. Usa `notas` solo para aclaraciones textuales que no sean cantidades.
-  6. **Procedimiento:** Incluye solo el procedimiento de la prueba (no de las soluciones). Copia el bloque completo en `procedimiento.texto`. Usa `procedimiento.notas` para aclaraciones breves y `procedimiento.tiempo_retencion` si el texto trae tiempos relativos/factores de respuesta.
-  7. **Criterio de aceptacion:** Copia el texto literal en `criterio_aceptacion.texto`. Si hay tabla de etapas (S1/S2), llena `tabla_criterios` con `etapa`, `unidades_analizadas` y `criterio_aceptacion`. Notas opcionales en `notas`.
-  8. **Equipos y reactivos:** Lista literal de equipos o reactivos mencionados explicitamente en esta prueba (no agregues globales no vistos).
-  9. **Procedimiento SST:** Si se describe orden de inyeccion para adecuabilidad del sistema, registra cada entrada con `solucion`, `numero_inyecciones`, `test_adecuabilidad` y `especificacion`. Si no existe, deja `[]`.
+## Objetivo
+- Identificar `section_id`, `section_title`, `test_name` y `test_type` de la prueba/solucion.
+- Extraer toda la informacion estructurada disponible siguiendo el modelo `TestSolutions`.
+- No inventes datos ni reformules el texto: si algo no aparece, deja `null` o listas vacias.
 
-  ## Formato de salida (JSON valido, solo un elemento en `tests`)
-  ```json
-  {{
-    "tests": [
-      {{
-        "section_id": "...",
-        "section_title": "...",
-        "test_name": "...",
-        "test_type": "...",
-        "condiciones_cromatograficas": {{
-          "condiciones_cromatograficas": [
-            {{
-              "nombre_condicion": "...",
-              "valor_condicion": "..."
-            }}
-          ],
-          "tabla_gradiente": [
-            {{
-              "tiempo": ...,
-              "proporcion_a": ...,
-              "proporcion_b": ...
-            }}
-          ],
-          "notas": ["..."]
-        }},
-        "soluciones": [
+## Instrucciones de extraccion
+1. **Section/title/test_name:** Usa la numeracion y el encabezado literal. Si no hay titulo o nombre de prueba, escribe "Por definir".
+2. **Test type:** Elige solo entre estos valores: "Descripcion", "Identificacion", "Valoracion", "Impurezas", "Peso promedio", "Disolucion", "Uniformidad de contenido", "Control microbiologico", "Humedad en cascarilla", "Humedad en contenido", "Dureza", "Espesores", "Uniformidad de unidades de dosificacion", "Perdida por Secado", "Check list de autorizacion", "Hoja de trabajo instrumental HPLC", "Solucion", "Otros analisis". Si no es obvio, selecciona la etiqueta mas cercana al texto.
+3. **Texto literal siempre:** Respeta ortografia, mayusculas y simbolos del documento. No resumes ni corriges. Si un campo es opcional y no hay informacion, usa `null` o `[]`.
+4. **Condiciones cromatograficas:** Si se listan columna, fase movil, flujo, temperatura o gradiente, llevalas a `condiciones_cromatograficas` con pares `nombre_condicion`/`valor_condicion`. Si hay tabla de gradiente, usa `tabla_gradiente` (tiempo, proporcion_a, proporcion_b). Extrae los solventes de fase movil en `solventes_fase_movil` (ej: ["Agua (grado HPLC)", "Acetonitrilo"]). Notas adicionales van en `notas`.
+5. **Soluciones:** Captura cada encabezado de solucion/fase movil/buffer/diluyente de esta prueba. `nombre_solucion` es el encabezado literal. `preparacion_solucion` es el bloque completo de preparacion copiado tal cual, desde la linea debajo del encabezado hasta antes del siguiente encabezado de solucion, procedimiento o criterio. Usa `notas` solo para aclaraciones textuales que no sean cantidades.
+6. **Procedimiento:** Incluye solo el procedimiento de la prueba (no de las soluciones). Copia el bloque completo en `procedimiento.texto`. Usa `procedimiento.notas` para aclaraciones breves y `procedimiento.tiempo_retencion` si el texto trae tiempos relativos/factores de respuesta.
+7. **Criterio de aceptacion:** Copia el texto literal en `criterio_aceptacion.texto`. Si hay tabla de etapas (S1/S2), llena `tabla_criterios` con `etapa`, `unidades_analizadas` y `criterio_aceptacion`. Notas opcionales en `notas`.
+8. **Equipos y reactivos:** Lista literal de equipos o reactivos mencionados explicitamente en esta prueba (no agregues globales no vistos).
+9. **Procedimiento SST:** Si se describe orden de inyeccion para adecuabilidad del sistema, registra cada entrada con `solucion`, `numero_inyecciones`, `test_adecuabilidad` y `especificacion`. Si no existe, deja `[]`.
+
+## Formato de salida (JSON valido, EXACTAMENTE UN elemento en `tests`)
+
+**REGLA CRÍTICA:** El array `tests` debe contener **EXACTAMENTE 1 objeto**. NUNCA generes 2 o más elementos en el array. Si detectas que estás a punto de duplicar el contenido, DETENTE inmediatamente.
+```json
+{{
+  "tests": [
+    {{
+      "section_id": "...",
+      "section_title": "...",
+      "test_name": "...",
+      "test_type": "...",
+      "condiciones_cromatograficas": {{
+        "condiciones": [
           {{
-            "nombre_solucion": "...",
-            "preparacion_solucion": "...",
-            "notas": ["..."]
+            "nombre_condicion": "...",
+            "valor_condicion": "..."
           }}
         ],
-        "procedimiento": {{
-          "texto": "...",
-          "notas": ["..."],
-          "tiempo_retencion": [
-            {{
-              "nombre": "...",
-              "tiempo_relativo_retencion": "...",
-              "factor_respuesta_relativa": "..."
-            }}
-          ]
-        }},
-        "criterio_aceptacion": {{
-          "texto": "...",
-          "notas": ["..."],
-          "tabla_criterios": [
-            {{
-              "etapa": "...",
-              "unidades_analizadas": "...",
-              "criterio_aceptacion": "..."
-            }}
-          ]
-        }},
-        "equipos": ["..."],
-        "reactivos": ["..."],
-        "procedimiento_sst": [
+        "tabla_gradiente": [
           {{
-            "solucion": "...",
-            "numero_inyecciones": ...,
-            "test_adecuabilidad": "...",
-            "especificacion": "..."
+            "tiempo": ...,
+            "proporcion_a": ...,
+            "proporcion_b": ...
+          }}
+        ],
+        "solventes_fase_movil": ["Agua (grado HPLC)", "Acetonitrilo (grado HPLC)"],
+        "notas": ["..."]
+      }},
+      "soluciones": [
+        {{
+          "nombre_solucion": "...",
+          "preparacion_solucion": "...",
+          "notas": ["..."]
+        }}
+      ],
+      "procedimiento": {{
+        "texto": "...",
+        "notas": ["..."],
+        "tiempo_retencion": [
+          {{
+            "nombre": "...",
+            "tiempo_relativo_retencion": "...",
+            "factor_respuesta_relativa": "..."
           }}
         ]
-      }}
-    ]
-  }}
-  ```
+      }},
+      "criterio_aceptacion": {{
+        "texto": "...",
+        "notas": ["..."],
+        "tabla_criterios": [
+          {{
+            "etapa": "...",
+            "unidades_analizadas": "...",
+            "criterio_aceptacion": "..."
+          }}
+        ]
+      }},
+      "equipos": ["..."],
+      "reactivos": ["..."],
+      "procedimiento_sst": [
+        {{
+          "solucion": "...",
+          "numero_inyecciones": ...,
+          "test_adecuabilidad": "...",
+          "especificacion": "..."
+        }}
+      ]
+    }}
+  ]
+}}
+```
 
-  ## Reglas finales
-  - No cites informacion que no este en el markdown recibido.
-  - Si el campo no aplica o no existe, usa `null` o `[]` segun corresponda.
-  - Devuelve un JSON valido y nada mas.
+## Reglas finales
+- No cites informacion que no este en el markdown recibido.
+- Si el campo no aplica o no existe, usa `null` o `[]` segun corresponda.
+- Devuelve un JSON valido y nada mas.
+- **UN SOLO TEST:** El array `tests` debe tener EXACTAMENTE 1 elemento. Si generas más de 1, tu respuesta será inválida.
+- **ANTI-REPETICION:** NUNCA repitas el mismo texto mas de una vez. Si hay referencias como "Ver Anexo X" o "Ver item X", mencionala UNA SOLA VEZ en el campo `referencias` como lista corta. No generes secuencias repetitivas.
+- **LONGITUD MAXIMA:** El campo `referencias` debe tener maximo 5 elementos. Agrupa referencias similares si hay mas.
 """
-
 
 UNIFIED_CHANGE_SYSTEM_ANALYSIS_PROMPT = """
   Eres un experto planificador de cambios en métodos analíticos. Tu tarea es analizar un método analítico legado y generar un plan de intervención detallado y ordenado para implementar los cambios del control de cambios.

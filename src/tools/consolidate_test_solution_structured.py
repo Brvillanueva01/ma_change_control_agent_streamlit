@@ -1,6 +1,7 @@
 import copy
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, List, Optional
 
 from langchain_core.messages import ToolMessage
@@ -13,8 +14,10 @@ from src.prompts.tool_description_prompts import (
     TEST_SOLUTION_STRUCTURED_CONSOLIDATION_TOOL_DESC,
 )
 from .test_solution_structured_extraction import (
-    TEST_SOLUTION_STRUCTURED_CONTENT,
+    DEFAULT_BASE_PATH,
+    TEST_SOLUTION_MARKDOWN_DOC_NAME,
     TEST_SOLUTION_STRUCTURED_DIR,
+    TEST_SOLUTION_STRUCTURED_CONTENT
 )
 
 logger = logging.getLogger(__name__)
@@ -61,20 +64,41 @@ def _sort_key(entry: Dict[str, Any]) -> tuple:
     return (2, str(source_id))
 
 
+def _structured_dir(base_path: str) -> str:
+    base = (base_path or DEFAULT_BASE_PATH).rstrip("/")
+    return f"{base}/test_solution_structured"
+
+
+def _structured_content(base_path: str) -> str:
+    base = (base_path or DEFAULT_BASE_PATH).rstrip("/")
+    return f"{base}/test_solution_structured_content.json"
+
+
 @tool(description=TEST_SOLUTION_STRUCTURED_CONSOLIDATION_TOOL_DESC)
 def consolidate_test_solution_structured(
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId] = "",
+    base_path: str = DEFAULT_BASE_PATH,
 ) -> Command:
-    files = dict(state.get("files", {}))
+    # Archivos originales para leer entradas individuales
+    archivos_entrada = dict(state.get("files", {}))
+
+    # Archivos base que queremos retener (sin las ramas paralelas)
+    archivos_resultado = {
+        k: v for k, v in archivos_entrada.items() 
+        if k == TEST_SOLUTION_MARKDOWN_DOC_NAME or k == TEST_SOLUTION_STRUCTURED_CONTENT
+    }
+
     candidate_entries: List[Dict[str, Any]] = []
     consumed_paths: List[str] = []
+    structured_dir = _structured_dir(base_path)
+    structured_content_path = _structured_content(base_path)
 
-    for path, file_entry in files.items():
+    for path, file_entry in archivos_entrada.items():
         if not isinstance(path, str):
             continue
 
-        if not path.startswith(f"{TEST_SOLUTION_STRUCTURED_DIR}/"):
+        if not path.startswith(f"{structured_dir}/"):
             continue
 
         if not isinstance(file_entry, dict):
@@ -107,24 +131,29 @@ def consolidate_test_solution_structured(
 
     candidate_entries.sort(key=_sort_key)
 
-    files[TEST_SOLUTION_STRUCTURED_CONTENT] = {
-        "content": json.dumps(candidate_entries, indent=2, ensure_ascii=False),
+    # Resultado final: archivos_resultado + nuevo consolidado
+    archivos_resultado_final = archivos_resultado.copy()
+
+    content_str = json.dumps(candidate_entries, indent=2, ensure_ascii=False)
+    archivos_resultado_final[structured_content_path] = {
+        "content": content_str.split("\n"),
         "data": candidate_entries,
+        "modified_at": datetime.now(timezone.utc).isoformat(),
     }
     for consumed_path in consumed_paths:
-        if consumed_path != TEST_SOLUTION_STRUCTURED_CONTENT:
-            files.pop(consumed_path, None)
+        if consumed_path != structured_content_path:
+            archivos_resultado_final.pop(consumed_path, None)
 
     summary_message = (
         "Consolidé "
         f"{len(candidate_entries)} pruebas/soluciones estructuradas en "
-        f"{TEST_SOLUTION_STRUCTURED_CONTENT}."
+        f"{structured_content_path}."
     )
     logger.info(summary_message)
 
     return Command(
         update={
-            "files": files,
+            "files": archivos_resultado_final,
             "messages": [ToolMessage(summary_message, tool_call_id=tool_call_id)],
         }
     )

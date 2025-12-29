@@ -1,5 +1,6 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 from typing import Annotated, Dict, List, Literal, Optional, Type, Union, Any
@@ -498,11 +499,13 @@ def extract_annex_cc(
         files[document_name] = {
             "content": full_json_string,
             "data": serialized_data,
+            "modified_at": datetime.now(timezone.utc).isoformat(),
         }
     else:
         files[document_name] = {
             "content": "{}",
             "data": {},
+            "modified_at": datetime.now(timezone.utc).isoformat(),
         }  # Guarda un JSON vacío si falla
 
     # 4. Guarda un archivo separado con el resumen para consumo rápido
@@ -511,6 +514,7 @@ def extract_annex_cc(
     files[summary_file_path] = {
         "content": json.dumps(summary_payload, indent=2, ensure_ascii=False),
         "data": summary_payload,
+        "modified_at": datetime.now(timezone.utc).isoformat(),
     }
     summary_text = summary_payload.get("summary", f"Documento {document_name} procesado exitosamente.")
 

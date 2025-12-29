@@ -15,7 +15,7 @@ from langsmith import traceable
 from pydantic import BaseModel, Field
 
 from src.graph.state import DeepAgentState
-from src.prompts.tool_description_prompts import TEST_SOLUTION_CLEAN_MARKDOWN_TOOL_DESC
+from src.prompts.tool_description_prompts import TEST_SOLUTION_CLEAN_MARKDOWN_SBS_TOOL_DESC
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ TEST_SOLUTION_MARKDOWN_DOC_NAME = "/actual_method/test_solution_markdown.json"
 TEST_METADATA_TOC_DOC_NAME = "/actual_method/method_metadata_TOC.json"
 
 CHUNK_SIZE_TOKENS = 3000
-CHUNK_OVERLAP_TOKENS = 0
+CHUNK_OVERLAP_TOKENS = 300
 CHUNK_SEPARATORS = [
     "\n\n",
     "\n",
@@ -36,191 +36,159 @@ CHUNK_SEPARATORS = [
     "",
 ]
 
-# Patrones para identificar secciones de PROCEDIMIENTOS/DESARROLLO
-PROCEDURES_SECTION_PATTERNS = [
-    r"^#+\s*\d*\.?\d*\s*PROCEDIMIENTOS?\b",
-    r"^#+\s*\d*\.?\d*\s*DESARROLLO\b",
-    r"^\d+\.?\s*PROCEDIMIENTOS?\b",
-    r"^\d+\.?\s*DESARROLLO\b",
-    r"^\*\*\s*\d*\.?\d*\s*PROCEDIMIENTOS?\b",
-    r"^\*\*\s*\d*\.?\d*\s*DESARROLLO\b",
-]
-
-# Patrones para identificar secciones que terminan PROCEDIMIENTOS
-END_PROCEDURES_PATTERNS = [
-    r"^#+\s*\d+\.?\s*REFERENCIA",
-    r"^#+\s*\d+\.?\s*ANEXOS?",
-    r"^#+\s*\d+\.?\s*DOCUMENTOS\s+RELACIONADOS",
-    r"^#+\s*\d+\.?\s*HIST[ÓO]RICO",
-    r"^\d+\.?\s*REFERENCIA",
-    r"^\d+\.?\s*ANEXOS?",
-    r"^\d+\.?\s*DOCUMENTOS\s+RELACIONADOS",
-    r"^\d+\.?\s*HIST[ÓO]RICO",
-]
-
 CHUNK_SYSTEM_PROMPT = """
-### ROLE
-Eres un experto en análisis de documentos de métodos analíticos farmacéuticos. Tu objetivo es identificar ÚNICAMENTE los **NOMBRES DE PRUEBAS ANALÍTICAS PRINCIPALES** de la sección de **PROCEDIMIENTOS** de un documento en formato Markdown.
+    ### ROLE
+    Eres un experto en análisis de documentos de métodos analíticos farmacéuticos. Tu objetivo es identificar ÚNICAMENTE los **NOMBRES DE PRUEBAS ANALÍTICAS PRINCIPALES** de un documento en formato Markdown.
 
-### TASK
-Analiza el texto en Markdown e identifica SOLO los encabezados que corresponden a **PRUEBAS ANALÍTICAS** dentro de la sección de PROCEDIMIENTOS/DESARROLLO. Las pruebas pueden aparecer:
-- Con numeración (ej: "5.1 DESCRIPCIÓN", "## 5.8 VALORACIÓN")
-- Sin numeración (ej: "DESCRIPCIÓN (USP)", "**VALORACIÓN (USP)**", "SOLVENTES RESIDUALES (USP)")
-- En diferentes formatos: encabezados markdown (#, ##), texto en negrita (**texto**), o texto en mayúsculas dentro de tablas
+    ### TASK
+    Analiza el texto en Markdown e identifica SOLO los encabezados que corresponden a **PRUEBAS ANALÍTICAS**. Las pruebas pueden aparecer:
+    - Con numeración (ej: "7.1 DESCRIPCIÓN", "## 7.8 VALORACIÓN")
+    - Sin numeración (ej: "DESCRIPCIÓN (USP)", "**VALORACIÓN (USP)**", "SOLVENTES RESIDUALES (USP)")
+    - En diferentes formatos: encabezados markdown (#, ##), texto en negrita (**texto**), o texto en mayúsculas dentro de tablas
 
-Para cada prueba analítica detectada, extrae:
-- `raw`: El encabezado/título EXACTO como aparece en el markdown (solo la línea del título, NO el contenido).
-- `section_id`: El número de sección si existe (ej: "5.1", "5.8"), o `null` si no tiene numeración.
-- `title`: El nombre de la prueba SIN la numeración inicial, copiado EXACTAMENTE como aparece.
+    Para cada prueba analítica detectada, extrae:
+    - `raw`: El encabezado/título EXACTO como aparece en el markdown (solo la línea del título, NO el contenido).
+    - `section_id`: El número de sección si existe (ej: "7.1", "7.8"), o `null` si no tiene numeración.
+    - `title`: El nombre de la prueba SIN la numeración inicial, copiado EXACTAMENTE como aparece.
 
-### IMPORTANTE: SECCIÓN CORRECTA
-- **SOLO** extrae pruebas de la sección **PROCEDIMIENTOS** o **DESARROLLO** (típicamente sección 5, 6 o 7 dependiendo del documento).
-- **NUNCA** extraigas de la sección **ESPECIFICACIONES** (típicamente sección 3).
-- **NUNCA** extraigas de la **TABLA DE CONTENIDO** o **ÍNDICE**.
-- Las pruebas en ESPECIFICACIONES solo listan criterios de aceptación, NO procedimientos analíticos.
+    ### CRITERIOS DE INCLUSIÓN (QUÉ SÍ EXTRAER)
+    Extrae encabezados que sean **pruebas analíticas**, tales como:
+    - DESCRIPCIÓN / DESCRIPCION
+    - PUNTO DE FUSIÓN / PUNTO DE FUSION
+    - IDENTIFICACIÓN / IDENTIFICACION (IR, UV, HPLC, etc.)
+    - VALORACIÓN / VALORACION / ENSAYO / POTENCIA
+    - PUREZA CROMATOGRÁFICA / PUREZA CROMATOGRAFICA
+    - SUSTANCIAS RELACIONADAS / IMPUREZAS / IMPUREZAS ORGÁNICAS / IMPUREZAS ORGANICAS
+    - PUREZA ENANTIOMÉRICA / PUREZA ENANTIOMERICA
+    - UNIFORMIDAD DE CONTENIDO / UNIFORMIDAD DE DOSIS
+    - DISOLUCIÓN / DISOLUCION
+    - pH
+    - PÉRDIDA POR SECADO / PERDIDA POR SECADO / HUMEDAD
+    - METALES PESADOS
+    - SOLVENTES RESIDUALES
+    - CENIZAS SULFATADAS
+    - LÍMITE MICROBIANO / LIMITE MICROBIANO
+    - ESTERILIDAD
+    - ENDOTOXINAS BACTERIANAS
+    - LÍMITE DE NAPROXENO LIBRE / NAPROXENO LIBRE (y similares para otros APIs)
+    - Otras pruebas analíticas con nombres similares
 
-### CRITERIOS DE INCLUSIÓN (QUÉ SÍ EXTRAER)
-Extrae encabezados que sean **pruebas analíticas** de la sección PROCEDIMIENTOS, tales como:
-- DESCRIPCIÓN / DESCRIPCION
-- PUNTO DE FUSIÓN / PUNTO DE FUSION
-- IDENTIFICACIÓN / IDENTIFICACION (IR, UV, HPLC, etc.)
-- VALORACIÓN / VALORACION / ENSAYO / POTENCIA
-- PUREZA CROMATOGRÁFICA / PUREZA CROMATOGRAFICA
-- SUSTANCIAS RELACIONADAS / IMPUREZAS / IMPUREZAS ORGÁNICAS / IMPUREZAS ORGANICAS
-- PUREZA ENANTIOMÉRICA / PUREZA ENANTIOMERICA
-- UNIFORMIDAD DE CONTENIDO / UNIFORMIDAD DE DOSIS
-- DISOLUCIÓN / DISOLUCION
-- pH
-- PÉRDIDA POR SECADO / PERDIDA POR SECADO / HUMEDAD
-- METALES PESADOS
-- SOLVENTES RESIDUALES
-- CENIZAS SULFATADAS
-- LÍMITE MICROBIANO / LIMITE MICROBIANO
-- ESTERILIDAD
-- ENDOTOXINAS BACTERIANAS
-- LÍMITE DE NAPROXENO LIBRE / NAPROXENO LIBRE (y similares para otros APIs)
-- Otras pruebas analíticas con nombres similares
+    ### CRITERIOS DE EXCLUSIÓN (QUÉ NO EXTRAER)
+    **NO extraigas** las siguientes secciones:
+    - Preparación de soluciones (Solución estándar, Solución madre, Solución test, Solución muestra, Solución Stock, etc.)
+    - Preparación de reactivos (Tioacetamida SR, Buffer, Fase móvil, Diluyente, etc.)
+    - Condiciones cromatográficas / Condiciones Instrumentales
+    - Procedimiento / Procedimientos / Test de adecuabilidad
+    - Criterio de aceptación (como sección independiente)
+    - Cálculos / Fórmulas
+    - Equipos / Materiales
+    - Subsecciones numeradas con más de un punto decimal (ej: 7.1.1, 7.9.2, 7.10.3)
+    - Encabezados de página/documento (ej: "DE CAMBIO SC-25-777", "PRUEBAS PARA LA MATERIA PRIMA", "Página X de Y")
 
-### CRITERIOS DE EXCLUSIÓN (QUÉ NO EXTRAER)
-**NO extraigas** las siguientes secciones:
-- **Entradas de TABLA DE CONTENIDO** (líneas con "..." seguido de número de página)
-- **Sección ESPECIFICACIONES** (sección 3.x con criterios de aceptación, NO procedimientos)
-- Preparación de soluciones (Solución estándar, Solución madre, Solución test, Solución muestra, Solución Stock, etc.)
-- Preparación de reactivos (Tioacetamida SR, Buffer, Fase móvil, Diluyente, etc.)
-- Condiciones cromatográficas / Condiciones Instrumentales
-- Procedimiento / Procedimientos / Test de adecuabilidad (como subsección)
-- Criterio de aceptación (como sección independiente)
-- Cálculos / Fórmulas
-- Equipos / Materiales
-- Subsecciones numeradas con más de un punto decimal (ej: 5.1.1, 5.9.2, 5.10.3)
-- Encabezados de página/documento (ej: "DE CAMBIO SC-25-777", "PRUEBAS PARA LA MATERIA PRIMA", "Página X de Y")
-- **Parámetros de SST (Test de Adecuabilidad del Sistema)**: NO extraer parámetros que aparecen en tablas de orden de inyección como: "Relación Pico/Valle", "Desviación Estándar Relativa de las Áreas (RSD)", "Factor de Cola", "Factor de Exactitud", "Asimetría", "Señal/Ruido (S/N)", "Resolución", "Factor de Capacidad", "Platos Teóricos". Estos son parámetros de adecuabilidad, NO pruebas analíticas.
-- **Contenido de celdas de tablas de SST**: Si el texto proviene de una tabla con columnas como "Solución", "Número de Inyecciones", "Test de Adecuabilidad", "Especificación", NO extraer ningún valor de esas celdas como prueba analítica.
+    ### REGLAS DE EXTRACCIÓN
+    - **raw**: Copia SOLO la línea del encabezado/título EXACTAMENTE como aparece (incluyendo #, **, |, etc.), NO incluyas el contenido/procedimiento de la prueba.
+    - **section_id**: Extrae el número de sección si existe (ej: "7.1", "7.8"). Si NO hay número, usa `null`. **NUNCA inventes números de sección**.
+    - **title**: Copia el nombre de la prueba EXACTAMENTE como aparece, sin la numeración inicial.
 
-### REGLAS DE EXTRACCIÓN
-- **raw**: Copia SOLO la línea del encabezado/título EXACTAMENTE como aparece (incluyendo #, **, |, etc.), NO incluyas el contenido/procedimiento de la prueba.
-- **section_id**: Extrae el número de sección si existe (ej: "7.1", "7.8"). Si NO hay número, usa `null`. **NUNCA inventes números de sección**.
-- **title**: Copia el nombre de la prueba EXACTAMENTE como aparece, sin la numeración inicial.
-
-### OUTPUT FORMAT
-```json
-{{
-  "test_methods": [
+    ### OUTPUT FORMAT
+    ```json
     {{
-      "raw": "string",
-      "section_id": "string o null",
-      "title": "string"
+    "test_methods": [
+        {{
+        "raw": "string",
+        "section_id": "string o null",
+        "title": "string"
+        }}
+    ]
     }}
-  ]
-}}
-```
+    ```
 
-Si no encuentras ninguna prueba analítica principal, devuelve:
-```json
-{{
-  "test_methods": []
-}}
-```
+    Si no encuentras ninguna prueba analítica principal, devuelve:
+    ```json
+    {{
+    "test_methods": []
+    }}
+    ```
 
-### EJEMPLOS
+    ### EJEMPLOS
 
-**Ejemplo 1 - Prueba CON numeración:**
-Input: "## 7.8 NAPROXENO LIBRE (USP)"
-Output:
-```json
-{{
-  "raw": "## 7.8 NAPROXENO LIBRE (USP)",
-  "section_id": "7.8",
-  "title": "NAPROXENO LIBRE (USP)"
-}}
-```
+    **Ejemplo 1 - Prueba CON numeración:**
+    Input: "## 7.8 NAPROXENO LIBRE (USP)"
+    Output:
+    ```json
+    {{
+    "raw": "## 7.8 NAPROXENO LIBRE (USP)",
+    "section_id": "7.8",
+    "title": "NAPROXENO LIBRE (USP)"
+    }}
+    ```
 
-**Ejemplo 2 - Prueba SIN numeración (en tabla):**
-Input: "|  DESCRIPCIÓN (USP)  |"
-Output:
-```json
-{{
-  "raw": "|  DESCRIPCIÓN (USP)  |",
-  "section_id": null,
-  "title": "DESCRIPCIÓN (USP)"
-}}
-```
+    **Ejemplo 2 - Prueba SIN numeración (en tabla):**
+    Input: "|  DESCRIPCIÓN (USP)  |"
+    Output:
+    ```json
+    {{
+    "raw": "|  DESCRIPCIÓN (USP)  |",
+    "section_id": null,
+    "title": "DESCRIPCIÓN (USP)"
+    }}
+    ```
 
-**Ejemplo 3 - Prueba SIN numeración (texto plano en mayúsculas):**
-Input: "SOLVENTES RESIDUALES (USP)"
-Output:
-```json
-{{
-  "raw": "SOLVENTES RESIDUALES (USP)",
-  "section_id": null,
-  "title": "SOLVENTES RESIDUALES (USP)"
-}}
-```
+    **Ejemplo 3 - Prueba SIN numeración (texto plano en mayúsculas):**
+    Input: "SOLVENTES RESIDUALES (USP)"
+    Output:
+    ```json
+    {{
+    "raw": "SOLVENTES RESIDUALES (USP)",
+    "section_id": null,
+    "title": "SOLVENTES RESIDUALES (USP)"
+    }}
+    ```
 
-**Ejemplo 4 - Prueba SIN numeración (en negrita):**
-Input: "**PRUEBA DE PUREZA ENANTIOMERICA (USP)**"
-Output:
-```json
-{{
-  "raw": "**PRUEBA DE PUREZA ENANTIOMERICA (USP)**",
-  "section_id": null,
-  "title": "PRUEBA DE PUREZA ENANTIOMERICA (USP)"
-}}
-```
+    **Ejemplo 4 - Prueba SIN numeración (en negrita):**
+    Input: "**PRUEBA DE PUREZA ENANTIOMERICA (USP)**"
+    Output:
+    ```json
+    {{
+    "raw": "**PRUEBA DE PUREZA ENANTIOMERICA (USP)**",
+    "section_id": null,
+    "title": "PRUEBA DE PUREZA ENANTIOMERICA (USP)"
+    }}
+    ```
 
-**Ejemplo 5 - Prueba CON numeración y encabezado markdown:**
-Input: "## IMPUREZAS ORGANICAS (USP)"
-Output:
-```json
-{{
-  "raw": "## IMPUREZAS ORGANICAS (USP)",
-  "section_id": null,
-  "title": "IMPUREZAS ORGANICAS (USP)"
-}}
-```
+    **Ejemplo 5 - Prueba CON numeración y encabezado markdown:**
+    Input: "## IMPUREZAS ORGANICAS (USP)"
+    Output:
+    ```json
+    {{
+    "raw": "## IMPUREZAS ORGANICAS (USP)",
+    "section_id": null,
+    "title": "IMPUREZAS ORGANICAS (USP)"
+    }}
+    ```
 
-**Ejemplo 6 - NO es prueba analítica (NO extraer):**
-Input: "### Solución Stock Estándar de Naproxeno Sódico"
-→ NO extraer (es preparación de solución)
+    **Ejemplo 6 - NO es prueba analítica (NO extraer):**
+    Input: "### Solución Stock Estándar de Naproxeno Sódico"
+    → NO extraer (es preparación de solución)
 
-**Ejemplo 7 - NO es prueba analítica (NO extraer):**
-Input: "## Procedimiento"
-→ NO extraer (es un procedimiento, no una prueba)
+    **Ejemplo 7 - NO es prueba analítica (NO extraer):**
+    Input: "## Procedimiento"
+    → NO extraer (es un procedimiento, no una prueba)
 
-**Ejemplo 8 - NO es prueba analítica (NO extraer):**
-Input: "## Cálculos"
-→ NO extraer (es sección de cálculos)
+    **Ejemplo 8 - NO es prueba analítica (NO extraer):**
+    Input: "## Cálculos"
+    → NO extraer (es sección de cálculos)
 """
 
 CHUNK_HUMAN_PROMPT_TEMPLATE = """
-A continuación se encuentra la sección del documento a analizar:
- 
-<DOCUMENT_CHUNK>
-{chunk_text}
-</DOCUMENT_CHUNK>
+    A continuación se encuentra la sección del documento a analizar:
+    
+    <DOCUMENT_CHUNK>
+    {chunk_text}
+    </DOCUMENT_CHUNK>
 """
 
-llm_model = init_chat_model(model="openai:gpt-5-mini")
+llm_model = init_chat_model(model="openai:gpt-5-mini", temperature=0)
 
 
 class TestMethodFromChunk(BaseModel):
@@ -252,153 +220,11 @@ class TestMethodsFromChunk(BaseModel):
 def _create_text_splitter() -> RecursiveCharacterTextSplitter:
     """Crea el splitter con configuración de tokens para chunking semántico."""
     return RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-        model_name="gpt-4.1-mini",
+        model_name="gpt-5-mini",
         chunk_size=CHUNK_SIZE_TOKENS,
         chunk_overlap=CHUNK_OVERLAP_TOKENS,
         separators=CHUNK_SEPARATORS,
     )
-
-
-def _remove_toc_section(markdown: str) -> str:
-    """
-    Elimina la sección de TABLA DE CONTENIDO del markdown.
-    
-    Detecta patrones como:
-    - "## TABLA DE CONTENIDO" hasta la siguiente sección principal
-    - Líneas con formato de índice: "X.X NOMBRE ... N" (puntos suspensivos + número de página)
-    """
-    if not markdown:
-        return ""
-    
-    lines = markdown.split("\n")
-    filtered_lines: List[str] = []
-    in_toc = False
-    
-    # Patrones para detectar inicio de TOC
-    toc_start_patterns = [
-        re.compile(r"^#+\s*TABLA\s+DE\s+CONTENIDO", re.IGNORECASE),
-        re.compile(r"^#+\s*ÍNDICE", re.IGNORECASE),
-        re.compile(r"^#+\s*INDICE", re.IGNORECASE),
-        re.compile(r"^\*\*\s*TABLA\s+DE\s+CONTENIDO", re.IGNORECASE),
-    ]
-    
-    # Patrón para detectar líneas de TOC (con ... y número de página)
-    toc_line_pattern = re.compile(r"^[\d\.]+\s+[A-ZÁÉÍÓÚÑ].*\.{2,}\s*\d+\s*$", re.IGNORECASE)
-    
-    # Patrón para detectar nueva sección principal (fin de TOC)
-    section_start_pattern = re.compile(r"^#+\s*\d+\.?\s+[A-ZÁÉÍÓÚÑ]", re.IGNORECASE)
-    
-    for line in lines:
-        stripped = line.strip()
-        
-        # Detectar inicio de TOC
-        if any(p.match(stripped) for p in toc_start_patterns):
-            in_toc = True
-            logger.debug("Detectado inicio de TOC: %s", stripped[:50])
-            continue
-        
-        # Si estamos en TOC, verificar si es línea de índice o fin de TOC
-        if in_toc:
-            # Verificar si es una línea de TOC (con ...)
-            if toc_line_pattern.match(stripped):
-                continue
-            # Verificar si es el inicio de una nueva sección (fin de TOC)
-            if section_start_pattern.match(stripped) and not toc_line_pattern.match(stripped):
-                in_toc = False
-                filtered_lines.append(line)
-                continue
-            # Líneas vacías o de formato dentro del TOC se saltan
-            if not stripped or stripped.startswith("|") or "..." in stripped:
-                continue
-        
-        # Filtrar líneas sueltas que parecen entradas de TOC (con ... y número)
-        if toc_line_pattern.match(stripped):
-            continue
-            
-        filtered_lines.append(line)
-    
-    result = "\n".join(filtered_lines)
-    logger.info("TOC removido: %d líneas originales -> %d líneas filtradas", len(lines), len(filtered_lines))
-    return result
-
-
-def _extract_procedures_section(markdown: str) -> str:
-    """
-    Extrae SOLO la sección de PROCEDIMIENTOS/DESARROLLO del markdown.
-    
-    Busca el inicio de secciones como:
-    - "## 5 PROCEDIMIENTOS"
-    - "## DESARROLLO"
-    - "5. PROCEDIMIENTOS"
-    
-    Y extrae hasta la siguiente sección de nivel superior (REFERENCIA, ANEXOS, etc.)
-    """
-    if not markdown:
-        return ""
-    
-    lines = markdown.split("\n")
-    
-    # Compilar patrones de inicio
-    start_patterns = [re.compile(p, re.IGNORECASE | re.MULTILINE) for p in PROCEDURES_SECTION_PATTERNS]
-    end_patterns = [re.compile(p, re.IGNORECASE | re.MULTILINE) for p in END_PROCEDURES_PATTERNS]
-    
-    start_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    
-    # Buscar inicio de sección PROCEDIMIENTOS
-    for idx, line in enumerate(lines):
-        stripped = line.strip()
-        if any(p.match(stripped) for p in start_patterns):
-            start_idx = idx
-            logger.info("Encontrada sección PROCEDIMIENTOS en línea %d: %s", idx, stripped[:60])
-            break
-    
-    if start_idx is None:
-        logger.warning("No se encontró sección PROCEDIMIENTOS/DESARROLLO en el documento")
-        return markdown  # Devolver todo si no se encuentra la sección
-    
-    # Buscar fin de sección PROCEDIMIENTOS
-    for idx, line in enumerate(lines[start_idx + 1:], start=start_idx + 1):
-        stripped = line.strip()
-        if any(p.match(stripped) for p in end_patterns):
-            end_idx = idx
-            logger.info("Fin de sección PROCEDIMIENTOS en línea %d: %s", idx, stripped[:60])
-            break
-    
-    # Extraer la sección
-    if end_idx is not None:
-        extracted_lines = lines[start_idx:end_idx]
-    else:
-        extracted_lines = lines[start_idx:]
-    
-    result = "\n".join(extracted_lines)
-    logger.info(
-        "Sección PROCEDIMIENTOS extraída: líneas %d-%d (%d líneas)",
-        start_idx,
-        end_idx if end_idx else len(lines),
-        len(extracted_lines)
-    )
-    return result
-
-
-def _preprocess_markdown_for_extraction(markdown: str) -> str:
-    """
-    Pre-procesa el markdown antes de la extracción:
-    1. Elimina la tabla de contenido (TOC)
-    2. Extrae solo la sección PROCEDIMIENTOS/DESARROLLO
-    
-    Esto evita extraer pruebas de ESPECIFICACIONES o de la TOC.
-    """
-    if not markdown:
-        return ""
-    
-    # Paso 1: Eliminar TOC
-    markdown_without_toc = _remove_toc_section(markdown)
-    
-    # Paso 2: Extraer solo sección PROCEDIMIENTOS
-    procedures_section = _extract_procedures_section(markdown_without_toc)
-    
-    return procedures_section
 
 
 def _split_markdown_into_chunks(full_markdown: str) -> List[str]:
@@ -662,23 +488,13 @@ def _markdown_doc_path(base_path: str) -> str:
 def _run_extraction_pipeline(full_markdown: str) -> List[Dict[str, Optional[str]]]:
     """
     Pipeline principal de extracción:
-    0. Pre-procesa el markdown (elimina TOC, extrae solo PROCEDIMIENTOS)
     1. Divide el markdown en chunks
     2. Extrae encabezados de cada chunk en paralelo
     3. Deduplica y fusiona resultados
     4. Filtra solo pruebas principales
-    5. Construye segmentos de markdown usando el markdown ORIGINAL (para preservar contexto)
+    5. Construye segmentos de markdown
     """
-    # Paso 0: Pre-procesar markdown para extracción de headers
-    preprocessed_markdown = _preprocess_markdown_for_extraction(full_markdown)
-    logger.info(
-        "Markdown pre-procesado: %d caracteres originales -> %d caracteres filtrados",
-        len(full_markdown),
-        len(preprocessed_markdown)
-    )
-    
-    # Usar markdown pre-procesado para identificar headers
-    chunks = _split_markdown_into_chunks(preprocessed_markdown)
+    chunks = _split_markdown_into_chunks(full_markdown)
     logger.info("Markdown dividido en %d chunks", len(chunks))
 
     if not chunks:
@@ -692,14 +508,13 @@ def _run_extraction_pipeline(full_markdown: str) -> List[Dict[str, Optional[str]
     filtered_headers = _filter_primary_test_methods(merged_headers)
     logger.info("Después de filtrar subapartados: %d pruebas principales", len(filtered_headers))
 
-    # Usar el markdown pre-procesado para construir segmentos (evita duplicados de ESPECIFICACIONES)
-    tests_with_markdown = _build_markdown_segments(filtered_headers, preprocessed_markdown)
+    tests_with_markdown = _build_markdown_segments(filtered_headers, full_markdown)
 
     return tests_with_markdown
 
 
-@tool(description=TEST_SOLUTION_CLEAN_MARKDOWN_TOOL_DESC)
-def test_solution_clean_markdown(
+@tool(description=TEST_SOLUTION_CLEAN_MARKDOWN_SBS_TOOL_DESC)
+def test_solution_clean_markdown_sbs(
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
     base_path: str = DEFAULT_BASE_PATH,
@@ -760,9 +575,8 @@ def test_solution_clean_markdown(
         "items": tests_with_markdown,
     }
 
-    content_str = json.dumps(payload, indent=2, ensure_ascii=False)
     files[markdown_doc_name] = {
-        "content": content_str.split("\n"),
+        "content": json.dumps(payload, indent=2, ensure_ascii=False),
         "data": payload,
         "modified_at": datetime.now(timezone.utc).isoformat(),
     }

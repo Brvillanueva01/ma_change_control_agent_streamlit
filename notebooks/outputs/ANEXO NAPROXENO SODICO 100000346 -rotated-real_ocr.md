@@ -112,7 +112,7 @@ Transferir cuidadosamente entre 1.0 y 2.0 g de la muestra a una cápsula de porc
 
 ### **PERDIDA POR SECADO (USP)**
 
-Tarar un frasco para pesada adecuado con tapón de vidrio o una caja petri que se haya secado durante aproximadamente 30 minutos bajo las mismas condiciones que deben emplearse en la determinación y enfriado a temperatura ambiente en un desecador.
+Tarar un frasco para pesada adecuado con tapón de vidrio o una caja petrí que se haya secado durante aproximadamente 30 minutos bajo las mismas condiciones que deben emplearse en la determinación y enfriado a temperatura ambiente en un desecador.
 
 ---
 
@@ -270,7 +270,7 @@ A cada uno de los tres tubos de comparación de color de 50 mL, que contienen re
 
 **Fase móvil:** Tolueno: Tetrahidrofurano: Ácido acético Glacial (30:3:1)
 
-## Se elimina la prueba
+**Se elimina la prueba**
 
 ---
 
@@ -305,7 +305,76 @@ Página 8 de 31
 
 ---
 
-![img-8.jpeg](img-8.jpeg)
+![img-0.jpeg](img-0.jpeg)
+
+Página 7 de 31
+
+# ANEXO I
+
+## CONTROL DE CAMBIO SC-25-777
+
+### CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA
+
+#### NAPROXENO SÓDICO
+
+##### 100000346
+
+## Preparación control
+
+En un tercer tubo de comparación de color de 50 mL, adicionar 25 mL de una solución preparada según se indica en la Preparación de prueba y agregar 2 mL de la Solución estándar de plomo. Ajustar a pH entre 3.0 y 4.0 con ácido acético 1 N ó hidróxido de amonio 6 N, según sea el caso, usando un pH-metro o un papel indicador de pH de rango estrecho (preferiblemente con límites de 2 a 5) como indicador externo. Diluir con agua hasta 40 mL y mezclar.
+
+## Procedimiento
+
+A cada uno de los tres tubos de comparación de color de 50 mL, que contienen respectivamente: la Preparación estándar, Preparación de prueba y Preparación control, adicionar 2 mL de Solución amortiguadora de acetato de pH 3.5. Luego adicionar 1.2 mL de Tioacetamida - glicerina base SR, diluir hasta 50 mL con agua y mezclar. Dejar en reposo durante 2 minutos y observar los tubos hacia abajo sobre una superficie blanca. El color de la solución de la Preparación de prueba no es más oscuro que el de la solución de la Preparación estándar y el color de la solución de la Preparación control es igual o más oscuro que el color de la solución de la Preparación estándar.
+
+**Nota:** Si el color de la Preparación control es más claro que el de la Preparación estándar, utilizar el método II en lugar del método I para la sustancia en análisis.
+
+**Criterio de aceptación:** El límite es 0.002%
+
+## PUREZA-CROMATOGRAFICA (USP) (CoFa)
+
+### Condiciones Cromatográficas
+
+**Placa:** Placa cromatográfica en capa delgada recubierta con una capa de mezcla de sílica gel de 0.25 mm
+
+**Fase móvil:** Tolueno: Tetrahidrofurano: Ácido acético Glacial (30:3:1)
+
+## Se elimina la prueba
+
+---
+
+![img-1.jpeg](img-1.jpeg)
+
+**ANEXO I**
+
+**CONTROL DE CAMBIO SC-25-777**
+
+**CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA**
+
+**NAPROXENO SÓDICO**
+
+**100000346**
+
+Página 8 de 31
+
+|  Volumen de Aplicación: 10 µL |   |
+| --- | --- |
+|  Desarrollo: ¼ partes de la longitud de la placa |   |
+|  Solución Test |   |
+|  Disolver 100.0 mg de muestra en 5 mL de Metanol. |   |
+|  Solución Estándar |   |
+|  Disolver 100.0 mg del Estándar de Naproxen Sódico en 5 mL de Metanol. |   |
+|  Soluciones de Comparación |   |
+|  Solución 1 (20 µg/mL): Tomar una alícuota de 10 µL de la Solución Estándar y transferir a una volumétrica de 10 mL, aforar a volumen con Metanol y mezclar. (0.1% de la Solución Estándar) |   |
+|  Solución 2 (60 µg/mL): Tomar una alícuota de 30 µL de la Solución Estándar y transferir a una volumétrica de 10 mL, aforar a volumen con Metanol y mezclar. (0.3% de la Solución Estándar) |   |
+|  Solución 3 (100 µg/mL): Tomar una alícuota de 50 µL de la Solución Estándar y transferir a una volumétrica de 10 mL, aforar a volumen con Metanol y mezclar. (0.5% de la Solución Estándar) |   |
+|  Procedimiento |   |
+|  Aplicar separadamente 10 µL de la Solución muestra, 10 µL de Solución estándar, 10 µL de Solución 1 de comparación, 10 µL de Solución 2 de comparación, y 10 µL de Solución 3 de comparación en la placa cromatográfica recubierta con una capa de 0.25 mm de gel de sílice y dejar secar las aplicaciones al aire. Colocar la placa en una cámara cromatográfica y desarrollar el cromatograma con |   |
+|  fase móvil constituida por una mezcla de tolueno, tetrahidrofurano y ácido acetico-glacial (30:3:1) hasta que el frente de la fase móvil haya recorrido aproximadamente ¼ partes de la longitud de la placa. Retirar la placa de la cámara |   |
+
+---
+
+![img-2.jpeg](img-2.jpeg)
 
 Página 9 de 31
 
@@ -352,7 +421,7 @@ Vb: Volumen de Acido perclórico 0.1N consumido en la titulación del blanco.
 
 ---
 
-![img-9.jpeg](img-9.jpeg)
+![img-3.jpeg](img-3.jpeg)
 
 Página 10 de 31
 
@@ -438,7 +507,7 @@ Solución Estandar
 
 ---
 
-![img-10.jpeg](img-10.jpeg)
+![img-4.jpeg](img-4.jpeg)
 
 Página 12 de 31
 
@@ -474,7 +543,7 @@ rs: Área del pico de Naproxeno Sódico en el Cromatograma de la Solución Está
 
 ---
 
-![img-11.jpeg](img-11.jpeg)
+![img-5.jpeg](img-5.jpeg)
 
 **ANEXO 1**
 
@@ -512,7 +581,7 @@ Página 13 de 31
 
 ---
 
-![img-12.jpeg](img-12.jpeg)
+![img-6.jpeg](img-6.jpeg)
 
 Página 14 de 31
 
@@ -546,7 +615,79 @@ Esta solución tiene una concentración de 0.005 mg/mL o 5.0 µg/mL de Compuesto
 
 ---
 
-![img-13.jpeg](img-13.jpeg)
+![img-0.jpeg](img-0.jpeg)
+
+**ANEXO 1**
+
+**CONTROL DE CAMBIO SC-25-777**
+
+**CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA**
+
+**NAPROXENO SÓDICO**
+
+**100000346**
+
+Página 13 de 31
+
+|  |   |
+| --- | --- |
+|   | Ws: Peso del Estándar de Naproxeno Sódico (mg)  |
+|   | [ ]: Porcentaje de pureza del Estándar de Naproxeno Sódico (Base As is).  |
+|   | Wm: Peso de la muestra (mg).  |
+|   | - Calcular el % de la sustancia seca utilizar la siguiente formula:  |
+|   | % Sustancia seca= $\frac{(\% \text{ Naproxeno sodico base As is x 100})}{(\text{100 - perdida por secado})}$  |
+|   | Criterio de aceptación: 98.0% -102.0% con respecto a la sustancia seca  |
+|  |   |
+|   | **IMPUREZAS ORGÁNICAS (USP)**  |
+|   | **Condiciones Cromatográficas**  |
+|   | Columna:  |
+|   | Detector DAD:  |
+|   | Temperatura de la columna:  |
+|   | Velocidad de flujo:  |
+|   | Volumen de inyección:  |
+|   | Soluciones  |
+|   | Fase móvil  |
+|   | Proceder como se indica en la valoración  |
+|   | **Gradiente**  |
+|   | Proceder como se indica en la valoración  |
+
+---
+
+![img-1.jpeg](img-1.jpeg)
+
+Página 14 de 31
+
+# ANEXO 1
+
+## CONTROL DE CAMBIO SC-25-777
+### CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA
+### NAPROXENO SÓDICO
+### 100000346
+
+**Solución A y Solución B**
+Proceder como se indica en la valoración
+
+**Diluyente**
+Metanol: Agua (50:50)
+
+**Solución Stock Estándar de Naproxeno Sódico**
+Transferir aproximadamente 22 mg del Estándar de Naproxeno Sódico, pesados con exactitud, a una volumétrica de 20-mL, disolver hasta completa disolución, aforar a volumen en Diluyente y mezclar.
+
+Esta solución tiene una concentración de 1.1 mg/mL o 1.100 µg/mL de Naproxeno sódico.
+
+**Solución Stock Estándar de Compuesto Relacionado K de Naproxeno**
+Transferir aproximadamente 25 mg del Estándar de Compuesto Relacionado K de Naproxeno, pesados con exactitud, a una volumétrica de 50-mL, disolver hasta completa disolución, aforar a volumen en Diluyente y mezclar. Transferir una alícuota de 1.0 mL de la solución anterior a una volumétrica de 100-mL, diluir y aforar a volumen con Diluyente y mezclar.
+
+Esta solución tiene una concentración de 0.005 mg/mL o 5.0 µg/mL de Compuesto Relacionado K de Naproxeno.
+
+**Solución Stock Estándar de Compuesto Relacionado A de Naproxeno**
+Transferir aproximadamente 20 mg del Estándar de Compuesto Relacionado A de Naproxeno, pesados con exactitud, a una volumétrica de 100-mL, disolver hasta completa disolución, aforar a volumen en Diluyente y mezclar. Transferir una alícuota de 5.0 mL de la solución anterior a una volumétrica de 20-mL, diluir y aforar a volumen con Diluyente y mezclar. De la solución anterior transferir una alícuota de 1.0 mL a una volumétrica de 10-mL, diluir y aforar a volumen con Diluyente y mezclar.
+
+Esta solución tiene una concentración de 0.005 mg/mL o 5.0 µg/mL de Compuesto Relacionado A de Naproxeno.
+
+---
+
+![img-2.jpeg](img-2.jpeg)
 
 Página 15 de 31
 
@@ -578,7 +719,7 @@ Esta solución tiene una concentración de Estándar de Naproxeno sódico de 0.1
 
 ---
 
-![img-14.jpeg](img-14.jpeg)
+![img-3.jpeg](img-3.jpeg)
 
 Página 16 de 31
 
@@ -616,51 +757,47 @@ Transferir una alícuota de 1.0 mL de la Solución Estándar Intermedio de Sensi
 
 ---
 
-![img-15.jpeg](img-15.jpeg)
+![img-4.jpeg](img-4.jpeg)
 
 Página 17 de 31
 
-![img-16.jpeg](img-16.jpeg)
+# ANEXO 1
 
-**ANEXO 1**
+## CONTROL DE CAMBIO SC-25-777
 
-**CONTROL DE CAMBIO SC-25-777**
+### CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA
 
-**CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA**
-
-**NAPROXENO SÓDICO**
-
-**100000346**
+#### NAPROXENO SÓDICO 100000346
 
 Esta solución tiene una concentración de Naproxeno sódico de 0.000055 mg/mL o 0.055 µg/mL, una concentración de Compuesto Relacionado A de Naproxeno de 0.000055 mg/mL o 0.055 µg/mL, una concentración de Compuesto Relacionado L de Naproxeno de 0.000048 mg/mL o 0.048 µg/mL, una concentración de Compuesto Relacionado E de Naproxeno de 0.000055 mg/mL o 0.055 µg/mL.
 
-**Solución Muestra**
+#### Solución Muestra
 
-Transferir aproximadamente 110 mg de la muestra, pesados con exactitud, a una volumétrica de 100-mL, disolver hasta completa disolución, aforar a volumen en Diluyente y mezclar. Transferir una alícuota de 10.0 mL de la solución anterior a una volumétrica de 100-mL, diluir y aforar a volumen con Diluyente y mezclar. Pasar a vial por filtro jeringa PVDF (Polyvinylidene Fluoride) de 0.45 µm descartando los primeros 2.0 mL de filtrado.
+Transferir aproximadamente 110 mg de la muestra, pesados con exactitud, a una volumétrica de 100 mL, disolver hasta completa disolución, aforar a volumen en Diluyente y mezclar. Transferir una alícuota de 10.0 mL de la solución anterior a una volumétrica de 100 mL, diluir y aforar a volumen con Diluyente y mezclar. Pasar a vial por filtro jeringa PVDF (Polyvinylidene Fluoride) de 0.45 µm descartando los primeros 2.0 mL de filtrado.
 
-Esta solución tiene una concentración de 0.11 mg/mL o 110 µg/mL de Naproxeno sódico procedimiento
+Esta solución tiene una concentración de 0.11 mg/mL o 110 µg/mL de Naproxeno sódico procedimiento.
 
 **NOTA 1:** A manera de información en la Tabla 3 se proporcionan los tiempos de retención relativos.
 
-**Tabla 3 Tiempos de retención relativos**
+#### Tabla 3 Tiempos de retención relativos
 
 |  Nombre | Tiempo de retención relativo | Criterios de aceptación (%)  |
 | --- | --- | --- |
 |  Compuesto relacionado K del naproxeno, si está presente | 0.66 | 0.10  |
 |  Compuesto relacionado A del naproxeno | 0.71 | 0.06  |
 |  Compuesto relacionado L del naproxeno | 0.88 | 0.1  |
-|  naproxeno | 1.0 | —  |
+|  Naproxeno | 1.0 | —  |
 |  Compuesto relacionado E del naproxeno | 1.63 | 0.1  |
 |  Cualquier impureza no especificada | — | 0.10  |
 |  Impurezas totales | — | 0.5  |
 
-**Test de adecuabilidad del sistema**
+#### Test de adecuabilidad del sistema
 
-*Inyectar las soluciones según lo indicado en la Tabla 4*
+Inyectar las soluciones según lo indicado en la Tabla 4.
 
 ---
 
-![img-17.jpeg](img-17.jpeg)
+![img-5.jpeg](img-5.jpeg)
 
 Página 18 de 31
 
@@ -683,7 +820,7 @@ Página 18 de 31
 
 ---
 
-![img-18.jpeg](img-18.jpeg)
+![img-6.jpeg](img-6.jpeg)
 
 Página 19 de 31
 
@@ -724,7 +861,7 @@ Dónde:
 
 ---
 
-![img-19.jpeg](img-19.jpeg)
+![img-7.jpeg](img-7.jpeg)
 
 Página 21 de 31
 
@@ -755,7 +892,79 @@ Página 21 de 31
 
 ---
 
-![img-20.jpeg](img-20.jpeg)
+![img-0.jpeg](img-0.jpeg)
+
+Página 19 de 31
+
+# ANEXO 1
+
+## CONTROL DE CAMBIO SC-25-777
+
+### CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA
+
+#### NAPROXENO SÓDICO 100000346
+
+#### Cálculos
+
+- Calcular el porcentaje del Compuesto Relacionado E de Naproxeno en la porción de Naproxeno Sódico tomada:
+
+$$
+\text{\% Compuesto Relacionado E} = \left( \frac{\text{rB}}{\text{rs}} \right) \times \left( \frac{\text{Ws} \times 1}{\text{50} \times 100} \times 100 \times 100 \right) \times \left( \frac{100 \times 100}{\text{Wm} \times 10} \right) \times 100
+$$
+
+Dónde:
+
+- **r1**: Área del Compuesto Relacionado E de Naproxeno, de la Solución Muestra
+- **r5**: Área del Compuesto Relacionado E de Naproxeno, de la Solución Estándar
+- **Ws**: Peso del Compuesto Relacionado E de Naproxeno (mg)
+- **l**: Porcentaje de pureza del Compuesto Relacionado E de Naproxeno (Base As Is)
+- **Wm**: Peso de la muestra (mg)
+- Calcular el porcentaje del Compuesto Relacionado A de Naproxeno en la porción de Naproxeno Sódico tomada:
+
+$$
+\text{\% Compuesto Relacionado A} = \left( \frac{\text{rB}}{\text{rs}} \right) \times \left( \frac{\text{Ws} \times 1}{\text{100} \times 100} \times 20 \times 10 \times 100 \right) \times \left( \frac{100 \times 100}{\text{Wm} \times 10} \right) \times 100
+$$
+
+Dónde:
+
+- **r1**: Área del Compuesto Relacionado A de Naproxeno de la Solución Muestra
+- **r5**: Área del Compuesto Relacionado A de Naproxeno de la Solución Estándar
+- **Ws**: Peso del Estándar de Compuesto Relacionado A de Naproxeno (mg)
+
+---
+
+![img-1.jpeg](img-1.jpeg)
+
+Página 21 de 31
+
+|   | Ws: Peso del Estándar de Naproxeno sódico (mg)  |
+| --- | --- |
+|   | [ ]: Porcentaje de pureza del Estándar de Naproxeno sódico en (Base As Is)  |
+|   | Wm: Peso de la muestra (mg)  |
+|   | F: Factor de respuesta relativo, 0.71 para el Compuesto Relacionado K de Naproxeno y 1.0 para la Impurezas No especificadas  |
+|   | **NOTA:** El umbral de reporte de notificación es del 0.05%.  |
+|   | Criterios de Aceptación:  |
+|   | Compuesto Relacionado K de Naproxeno, si está presente: No más de 0.10%.  |
+|   | Compuesto Relacionado A de Naproxeno: No más de 0.06%.  |
+|   | Compuesto Relacionado L de Naproxeno: No más de 0.1%.  |
+|   | Compuesto Relacionado E de Naproxeno: No más de 0.1%.  |
+|   | Cualquier Impureza No Especificada: No más de 0.10%.  |
+|   | Impurezas Totales: No más de 0.5%  |
+|   | **PRUEBA DE PUREZA ENANTIOMERICA (USP)**  |
+|   | Condiciones Cromatográficas  |
+|   | **Columna:**  |
+|   | **Detector DAD:**  |
+|  **Se Incluye La Prueba descrita en la monografía USP** | **RegisPack, (S,S) Whelk-O L102 (4.6 x 250) mm; 5 µm**  |
+|   | **Numero de partes 1-780101-300**  |
+|   | **263 nm**  |
+|   | **25°C**  |
+|   | **2 mL/min**  |
+|   | **Volumen de inyección:**  |
+|   | **20 µL**  |
+
+---
+
+![img-2.jpeg](img-2.jpeg)
 
 Página 22 de 31
 
@@ -787,7 +996,7 @@ Transferir una alícuota de 5.0 mL de la *Solución Stock de Compuesto Relaciona
 
 ---
 
-![img-21.jpeg](img-21.jpeg)
+![img-3.jpeg](img-3.jpeg)
 
 Página 23 de 31
 
@@ -829,7 +1038,7 @@ Test de adecuabilidad del sistema
 
 ---
 
-![img-22.jpeg](img-22.jpeg)
+![img-4.jpeg](img-4.jpeg)
 
 Página 24 de 31
 
@@ -858,7 +1067,7 @@ $$ \% \text{ de Compuesto Relacionado G} = \left[ \frac{70}{15} \right] \times \
 
 ---
 
-![img-23.jpeg](img-23.jpeg)
+![img-5.jpeg](img-5.jpeg)
 
 Página 25 de 31
 
@@ -886,7 +1095,7 @@ Página 25 de 31
 
 ---
 
-![img-24.jpeg](img-24.jpeg)
+![img-6.jpeg](img-6.jpeg)
 
 **ANEXO 1**
 
@@ -937,7 +1146,7 @@ Página 26 de 31
 
 ---
 
-![img-25.jpeg](img-25.jpeg)
+![img-7.jpeg](img-7.jpeg)
 
 Página 27 de 31
 
@@ -1013,7 +1222,134 @@ Transferir 1.0 mL Residual Solvent Class 2-Tolueno USP a una volumétrica de 100
 
 ---
 
-![img-26.jpeg](img-26.jpeg)
+![img-0.jpeg](img-0.jpeg)
+
+**ANEXO 1**
+
+**CONTROL DE CAMBIO SC-25-777**
+
+**CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA**
+
+**NAPROXENO SÓDICO**
+
+**100000346**
+
+Página 26 de 31
+
+|  Temperatura del Puerto de Inyección: | 140°C  |
+| --- | --- |
+|  Temperatura del Detector: | 250°C  |
+|  Temperatura de la Columna: | Temperatura inicial: 40°C durante 20 minutos  |
+|  Temperatura final: | 240°C durante 20 minutos  |
+|  Solución Madre del Estándar de Clase 1 |   |
+|  Nota: Al transferir las soluciones colocar la punta de la pipeta justo por debajo de la superficie del líquido y mezclar. |   |
+|  Transferir 1mL de Mezcla de Solventes Residuales Clase 1 USP, medidos con exactitud a una volumétrica de 100 mL, a la que previamente se han agregado aproximadamente 9 mL de Dimetil-sulfoxide, diluir con agua a volumen y mezclar. Transferir una alícuota de 1 mL de la solución anterior a una volumétrica de 100 mL a la que previamente se le han adicionado 50 mL de agua, aforar a volumen con agua y mezclar. |   |
+|  Solución Estándar de Clase 1 |   |
+|  Nota: Al transferir las soluciones colocar la punta de la pipeta justo por debajo de la superficie del líquido y mezclar. |   |
+|  Transferir 1mL de la Solución Madre del Estándar Clase 1 a un vial para muestreo de fase gaseosa apropiado que contenga 5 mL de agua tapar y mezclar. |   |
+|  Solución Madre del Estándar Mezcla A de Clase 2 |   |
+
+|  Tiempo de corrida: | 60 minutos  |
+| --- | --- |
+|  Flujo de Hidrogeno: | 30 mL/min  |
+|  Velocidad Lineal: | 35 cm/segundo  |
+|  Volumen de Inyección: | 1 µL  |
+|  Flujo de Aire: | 400 mL/min  |
+|  Condiciones del Sistema Headspace |   |
+|  Temperatura del vial: | 80°C  |
+|  Tiempo de Equilibrio: | 45 minutos  |
+|  Temperatura del Loop: | 85°C  |
+|  Temperatura Lineal: | 105°C  |
+|  Gas de arrastre: | Helio  |
+|  Tiempo de Presurización: | 60 segundos  |
+|  Tiempo de Equilibrio del Loop: | 0.05 minutos  |
+|  Tiempo de inyección: | 2 minutos  |
+|  Tiempo de llenado del Loop: | 2 minutos  |
+|  Volumen de Inyección: | 1.0 mL  |
+|  Tiempo ciclo cromatográfico: | 90 minutos  |
+|  Agitación: | baja, 1 minuto  |
+|  Presión del Vial: | 10 psi  |
+|  Tamaño del vial: | 10 mL  |
+
+---
+
+![img-1.jpeg](img-1.jpeg)
+
+Página 27 de 31
+
+**ANEXO I**
+
+**CONTROL DE CAMBIO SC-25-777**
+
+**CUADRO COMPARATIVO DE PRUEBAS PARA LA MATERIA PRIMA**
+
+**NAPROXENO SODICO**
+
+**100000346**
+
+**Nota:** Al transferir las soluciones colocar la punta de la pipeta justo por debajo de la superficie del líquido y mezclar.
+
+Transferir 1mL de Mezcla A de Solventes Residuales Clase 2 USP, medidos con exactitud a una volumétrica de 100 mL, diluir con agua a volumen y mezclar.
+
+**Solución Estándar Mezcla A de Clase 2**
+
+Transferir 1mL de la Solución Madre del Estándar Mezcla A Clase 2, a un vial para muestreo de fase gaseosa apropiado, agregar 5 mL de agua tapar y mezclar.
+
+**Solución Madre del Estándar Mezcla B de Clase 2**
+
+Transferir 1mL de Mezcla B de Solventes Residuales Clase 2 USP, medidos con exactitud a una volumétrica de 100 mL, diluir con agua a volumen y mezclar.
+
+**Solución Estándar Mezcla B de Clase 2**
+
+Transferir 5mL de la Solución Madre del Estándar Mezcla B Clase 2, a un vial para muestreo de fase gaseosa apropiado, agregar 1 mL de agua tapar y mezclar.
+
+**Solución Madre de la Muestra**
+
+Transferir aproximadamente 250.0mg del producto, pesado con exactitud, a una volumétrica de 25 mL, disolver, aforar a volumen con agua y mezclar.
+
+**Solución Muestra**
+
+Transferir 5 mL de la Solución Madre de la Muestra, a un vial para muestreo de fase gaseosa apropiado, agregar 1 mL de agua tapar y mezclar.
+
+**Solución de Aptitud del Sistema de Clase 1**
+
+Transferir 1mL de Solución de la solución Madre del Estándar de Clase 1 a un vial para muestreo de fase gaseosa adecuado, agregar 5 mL de la Solución Madre de la Muestra, tapar y mezclar.
+
+**Procedimiento**
+
+**Solución Stock Estándar de Clase 1**
+
+**NOTA 4:** Al transferir las soluciones, colocar la punta de la pipeta justo por debajo de la superficie del líquido y mezclar.
+
+Transferir 1.0 mL de estándar mezcla de Solventes Residuales - Clase 1 USP a una volumétrica de 100 mL previamente llena con aproximadamente 9.0 mL de Dimetilsulfóxido (DMSO), diluir a volumen con agua a volumen y mezclar.
+
+Transferir 1.0 mL de esta solución a una volumétrica de 100 mL, previamente llenado con aproximadamente 50 mL de agua, diluir a volumen con agua a volumen y mezclar.
+
+Transferir 10 mL de esta solución a un matraz volumétrico de 100 mL que contenga aproximadamente 50 mL de agua, diluir con agua a volumen y mezclar.
+
+**Solución Estándar de Clase 1**
+
+Transferir 1.0 mL de la Solución Stock Estándar de Clase 1 a un vial de headspace de 10 mL, que contiene 5.0 mL de agua, aplique el tapón, tape y mezcle.
+
+**Solución Stock Estándar Clase 2 Mezcla A**
+
+Transferir 1.0 mL de Estándar mezcla A de Solventes Residuales Clase 2 USP a una volumétrica de 100 mL, diluir a volumen con agua y mezclar.
+
+**Solución Estándar Mezcla A de Clase 2**
+
+Transferir 1.0 mL de Solución Stock Estándar Clase 2 Mezcla A a un vial de headspace de 10 mL, que contiene 5.0 mL de agua, aplique el tapón, tape y mezcle.
+
+**Solución Stock Estándar (Metanol)**
+
+Transferir 1.0 mL de Residual Solvent Class 2-Metanol USP a una volumétrica de 100 mL, previamente llena con 15 mL de agua. Aforar a volumen con agua y Mezclar.
+
+**Solución Stock Estándar (Tolueno)**
+
+Transferir 1.0 mL Residual Solvent Class 2-Tolueno USP a una volumétrica de 100 mL, previamente llena con 15 mL de agua. Aforar a volumen con agua y Mezclar.
+
+---
+
+![img-2.jpeg](img-2.jpeg)
 
 Página 28 de 31
 
@@ -1027,7 +1363,7 @@ Página 28 de 31
 
 A.— Inyectar la Solución Estándar Clase 1 y verificar que:
 
-- La señal ruido del 1, 1, 1 Tricloroetano no es menor de 5
+- La señal ruido del 1, 1, 1-Tricloroetano no es menor de 5
 
 B.— Inyectar la Solución Aptitud del Sistema Clase 1
 
@@ -1088,7 +1424,7 @@ Inyectar las soluciones según lo indicado en la Tabla 6.
 
 ---
 
-![img-27.jpeg](img-27.jpeg)
+![img-3.jpeg](img-3.jpeg)
 
 # ANEXO 1
 
@@ -1127,7 +1463,7 @@ Si la respuesta de cualquier pico diferente del pico de 1,1,1-tricloroetano en l
 
 ---
 
-![img-28.jpeg](img-28.jpeg)
+![img-4.jpeg](img-4.jpeg)
 
 Página 30 de 31
 
@@ -1172,7 +1508,7 @@ Donde:
 
 ---
 
-![img-29.jpeg](img-29.jpeg)
+![img-5.jpeg](img-5.jpeg)
 
 **ANEXO I**
 
@@ -1192,10 +1528,9 @@ Criterio de aceptación:
 - Tolueno: No más de 890 ppm
 - Metanol: No más de 3,000 ppm
 
-Elaborado por: ______________________
+Elaborado por: [Signature]
 
 Fecha: 2021-08-28
-
-Aprobado por: ______________________
+Aprobado por: [Signature]
 
 Fecha: 2021-08-28

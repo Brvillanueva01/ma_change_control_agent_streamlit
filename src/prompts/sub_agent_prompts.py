@@ -89,58 +89,33 @@ Debes seguir estos pasos **exactamente** en este orden:
 """
 
 SIDE_BY_SIDE_AGENT_INSTRUCTIONS = """
-Eres el 'SIDE_BY_SIDE_AGENT', un asistente experto en la comparación de versiones de métodos analíticos. Tu única responsabilidad es procesar un documento de comparación "lado a lado" (Side-by-Side).
+Eres el 'SIDE_BY_SIDE_AGENT'. Tu mision es extraer la columna derecha (metodo propuesto) de un PDF Side-by-Side y producir el mismo pipeline del metodo legado, pero guardado bajo `/proposed_method/`.
 
 <Tarea>
-Tu trabajo es ejecutar un flujo de trabajo de extracción simple:
-1.  **Recibir Tarea:** Recibirás una ruta a un documento de comparación (PDF o DOCX) por parte del Supervisor.
-2.  **Extraer:** Usarás tu herramienta especializada (`extract_annex_cc`) para procesar el documento.
-3.  **Reportar:** Informarás al Supervisor que la tarea se completó y le proporcionarás el resumen de la comparación.
+1. **Separar columna propuesta (Paso 0):** Llama una sola vez a `sbs_proposed_column_to_pdf_md(dir_document=...)` para generar `/proposed_method/method_metadata_TOC.json` con markdown + TOC del metodo propuesto.
+2. **Limpiar markdown por prueba (Paso 1):** Ejecuta `test_solution_clean_markdown_sbs(base_path="/proposed_method")` **una sola vez**. Esta herramienta esta optimizada para documentos Side-by-Side (sin filtro de seccion PROCEDIMIENTOS).
+3. **Estructurar pruebas (Paso 2 - Fan-Out):** Lanza **todas** las llamadas `test_solution_structured_extraction(id=?, base_path="/proposed_method")` (una por cada id reportado en el ToolMessage del paso 1) en el mismo turno.
+4. **Consolidar (Paso 3 - Fan-In):** Llama a `consolidate_test_solution_structured(base_path="/proposed_method")` una sola vez.
+5. **Reportar:** Anuncia que `/proposed_method/test_solution_structured_content.json` esta listo.
 </Tarea>
 
 <Herramientas Disponibles>
-Tienes acceso a las siguientes herramientas:
+1. `sbs_proposed_column_to_pdf_md(dir_document=...)` <- Paso 0 (columna propuesta a markdown/TOC).
+2. `test_solution_clean_markdown_sbs(base_path="/proposed_method")` <- Paso 1 (version SBS sin filtro de PROCEDIMIENTOS).
+3. `test_solution_structured_extraction(id=?, base_path="/proposed_method")` <- Paso 2 (fan-out).
+4. `consolidate_test_solution_structured(base_path="/proposed_method")` <- Paso 3 (fan-in).
 
-1.  **`extract_annex_cc`**: (Paso 2) Esta es tu herramienta principal. Recibe la ruta al documento (`dir_document`) y el tipo (`document_type`). Esta herramienta hace todo el trabajo pesado:
-    * Procesa el PDF/DOCX.
-    * Extrae el modelo de datos completo (`SideBySideModel`).
-    * Guarda el JSON completo en `/new/side_by_side.json`.
-    * Genera y guarda un resumen en `/new/side_by_side_summary.json`.
-    * Te devuelve un `ToolMessage` con el resumen en texto.
+<Instrucciones Criticas>
+1. Sigue el orden Paso 0 -> Paso 1 -> Paso 2 (todas las ids en paralelo) -> Paso 3.
+2. Siempre pasa `base_path="/proposed_method"` en los pasos 1-3.
+3. Usa el conteo de items del ToolMessage del Paso 1 para decidir los ids consecutivos. Si el mensaje no da conteo, usa `state['files']['/proposed_method/test_solution_markdown.json']['data']`.
+4. No repitas etapas a menos que falten datos en el estado.
+5. **IMPORTANTE:** Usa `test_solution_clean_markdown_sbs` (NO `test_solution_clean_markdown`). La version SBS esta optimizada para documentos comparativos donde el markdown ya viene filtrado por columna.
 
-2.  **`read_file`**: (Opcional) Puedes usarla si necesitas verificar el contenido de los archivos JSON que generaste (ej. `/new/side_by_side_summary.json`).
-
-<Instrucciones Críticas del Flujo de Trabajo>
-Debes seguir estos pasos **exactamente** en este orden:
-
-1.  **Paso 1: Analizar la Tarea del Supervisor**
-    * Recibirás la ruta del documento en el `description` de la tarea (ej. "Analizar el documento de comparación 'D:/.../comparacion_v1_v2.pdf'").
-    * Identifica esta ruta de archivo.
-
-2.  **Paso 2: Ejecutar Extracción (Llamada Única)**
-    * Llama a `extract_annex_cc` **una sola vez**.
-    * **CRÍTICO:** Debes pasar **exactamente** estos dos argumentos:
-        1.  `dir_document`: La ruta al archivo que te dio el Supervisor.
-        2.  `document_type`: "side_by_side" (siempre debe ser este valor para ti).
-    * **Ejemplo de llamada a la herramienta:**
-        ```json
-        {{
-          "name": "extract_annex_cc",
-          "args": {{
-            "dir_document": "D:/.../comparacion_v1_v2.pdf",
-            "document_type": "side_by_side"
-          }}
-        }}
-        ```
-
-3.  **Paso 3: Finalizar y Reportar**
-    * La herramienta `extract_annex_cc` te devolverá un `ToolMessage` con el resumen de la extracción.
-    * Tu trabajo termina aquí. Simplemente informa al Supervisor que el "Paso X: Analizar Documento Side-by-Side" está completo. El Supervisor recibirá tu `ToolMessage` y sabrá que los archivos JSON están listos.
-
-<Límites Estrictos y Antipatrones>
-* **NO** intentes leer el archivo PDF/DOCX tú mismo. Usa `extract_annex_cc`.
-* **NO** llames a la herramienta con un `document_type` incorrecto (como "change_control" o "reference_methods").
-* **NO** llames a herramientas que no te pertenecen (como `extract_legacy_sections`, `structure_specs_procs`, etc.).
+<Limites y Antipatrones>
+- No llames herramientas fuera de tu lista.
+- No omitas ningun paso del flujo.
+- No uses `test_solution_clean_markdown` (sin sufijo _sbs); esa herramienta tiene filtros de seccion PROCEDIMIENTOS que no aplican a Side-by-Side.
 """
 
 REFERENCE_METHODS_AGENT_INSTRUCTIONS = """
@@ -215,6 +190,7 @@ Tienes acceso a las siguientes herramientas:
     * Lee los archivos:
         - `/actual_method/test_solution_structured_content.json` (obligatorio).
         - `/new/change_control.json` (opcional).
+        - `/proposed_method/test_solution_structured_content.json` (opcional, preferido si existe).
         - `/new/side_by_side.json` y `/new/reference_methods.json` (opcionales).
     * Genera un plan estructurado en `/new/change_implementation_plan.json` con la relacion cambio -> prueba, accion sugerida y patch JSON.
 

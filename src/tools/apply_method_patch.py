@@ -36,6 +36,7 @@ PATCHES_DIR = "/new/applied_changes"
 REFERENCE_METHOD_DEFAULT_PATH = "/new/reference_methods.json"
 SIDE_BY_SIDE_DEFAULT_PATH = "/new/side_by_side.json"
 LEGACY_METHOD_DEFAULT_PATH = "/actual_method/test_solution_structured_content.json"
+PROPOSED_METHOD_DEFAULT_PATH = "/proposed_method/test_solution_structured_content.json"
 method_patch_model = init_chat_model(model="openai:gpt-5-mini", temperature=0)
 
 
@@ -449,7 +450,7 @@ def _append_log(files: dict[str, Any], entry: dict[str, Any]) -> None:
     if isinstance(existing, dict) and isinstance(existing.get("content"), str):
         log_entry = existing["content"] + log_entry
 
-    files[PATCH_LOG_PATH] = {"content": log_entry, "data": None}
+    files[PATCH_LOG_PATH] = {"content": log_entry, "data": None, "modified_at": datetime.now(timezone.utc).isoformat()}
 
 
 def _format_indices(indices: Iterable[int]) -> str:
@@ -479,6 +480,7 @@ def _save_patch(
     files[patch_path] = {
         "content": json.dumps(patch_payload, ensure_ascii=False, indent=2),
         "data": patch_payload,
+        "modified_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -489,6 +491,7 @@ def apply_method_patch(
     plan_path: str = PLAN_DEFAULT_PATH,
     action_index: int = 0,
     side_by_side_path: str = SIDE_BY_SIDE_DEFAULT_PATH,
+    proposed_method_path: str = PROPOSED_METHOD_DEFAULT_PATH,
     reference_method_path: str = REFERENCE_METHOD_DEFAULT_PATH,
     legacy_method_path: str = LEGACY_METHOD_DEFAULT_PATH,
     new_method_path: str = METHOD_DEFAULT_PATH,
@@ -586,7 +589,13 @@ def apply_method_patch(
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
-    side_by_side_payload = _load_json_payload(files, side_by_side_path)
+    raw_side_by_side_payload = _load_json_payload(files, side_by_side_path)
+    proposed_payload = _load_json_payload(files, proposed_method_path)
+    if proposed_payload:
+        side_by_side_payload = {"metodo_modificacion_propuesta": proposed_payload}
+        logger.info("Usando metodo propuesto de /proposed_method/ para side-by-side.")
+    else:
+        side_by_side_payload = raw_side_by_side_payload
     reference_payload = _load_json_payload(files, reference_method_path)
     legacy_payload = _load_json_payload(files, legacy_method_path)
 
