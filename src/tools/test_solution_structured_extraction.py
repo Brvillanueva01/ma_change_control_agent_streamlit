@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 from typing import Annotated, Dict, Optional, Any
 
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from src.graph.state import DeepAgentState
 from src.prompts.tool_description_prompts import TEST_SOLUTION_STRUCTURED_EXTRACTION_TOOL_DESC
-from src.prompts.tool_llm_calls_prompts import TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT
+from src.prompts.tool_llm_calls_prompts import TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT, TEST_SOLUTION_STRUCTURED_EXTRACTION_HUMAN_PROMPT
 from src.models.structured_test_model import TestSolutions
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,11 @@ def test_solution_structured_extraction(
     structured_model = llm_model.with_structured_output(TestSolutions)
     test_solution_input = structured_model.invoke(
         [
+            SystemMessage(
+                content=TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT
+            ),
             HumanMessage(
-                content=TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT.format(
+                content=TEST_SOLUTION_STRUCTURED_EXTRACTION_HUMAN_PROMPT.format(
                     test_solution_string=test_solution_string
                 )
             )

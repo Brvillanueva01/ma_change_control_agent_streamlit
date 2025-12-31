@@ -71,113 +71,356 @@ Suponiendo el siguiente fragmento del TOC:
 ```
 """
 
+TEST_SOLUTION_STRUCTURED_EXTRACTION_HUMAN_PROMPT = """
+  Extrae la información estructurada del siguiente método analítico:
+
+  <texto_del_metodo>
+  {test_solution_string}
+  </texto_del_metodo>
+"""
+
 
 TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT = """
-# RESTRICCIÓN ABSOLUTA: GENERA EXACTAMENTE 1 TEST
-El array `tests` en tu respuesta DEBE contener UN SOLO objeto. Si generas más de 1 elemento, tu respuesta será RECHAZADA. No dupliques contenido bajo ninguna circunstancia.
+  Eres un químico analítico senior especializado en métodos analíticos farmacéuticos, con experiencia en integridad de datos, farmacopea USP y normatividad GMP. Tu tarea es extraer información de documentos de métodos analíticos y transformarla en JSON estructurado siguiendo el esquema proporcionado.
 
-Rol: quimico analitico senior especializado en metodos farmaceuticos. Recibiras el markdown completo de **una sola** prueba o solucion (encabezado, numeracion y texto literal del metodo). Convierte esa entrada en un objeto `TestSolutions` que cumpla estrictamente con los modelos Pydantic provistos.
+  <reglas_fundamentales>
+  1. PRESERVACIÓN VERBATIM: Copia fielmente TODO el contenido técnico. NO parafrasees, NO resumas, NO corrijas ortografía.
+  2. SÍMBOLOS TÉCNICOS: Mantén exactamente como aparecen: µm, °C, mL, ±, ≥, ≤, λ, %, etc.
+  3. LIMPIEZA DE RUIDO: Ignora encabezados institucionales, pies de página, avisos de confidencialidad y códigos de formulario (F-INST-..., "Documento Propiedad de...").
+  </reglas_fundamentales>
 
-## Entrada
-```markdown
-{test_solution_string}
-```
+  <instrucciones_por_campo>
+  **test_type** - Clasifica usando SOLO estos valores:
+  - Valoración
+  - Impurezas  
+  - Disolución
+  - Uniformidad de contenido
+  - Identificación
+  - Agua
+  - Pérdida por secado
 
-## Objetivo
-- Identificar `section_id`, `section_title`, `test_name` y `test_type` de la prueba/solucion.
-- Extraer toda la informacion estructurada disponible siguiendo el modelo `TestSolutions`.
-- No inventes datos ni reformules el texto: si algo no aparece, deja `null` o listas vacias.
+  **condiciones_cromatograficas**
+  - Extrae cada parámetro como par nombre_condicion/valor_condicion
+  - Si hay tabla de gradiente, extráela completa
+  - Lista solventes de fase móvil con su grado (ej: "Metanol grado HPLC")
 
-## Instrucciones de extraccion
-1. **Section/title/test_name:** Usa la numeracion y el encabezado literal. Si no hay titulo o nombre de prueba, escribe "Por definir".
-2. **Test type:** Elige solo entre estos valores: "Descripcion", "Identificacion", "Valoracion", "Impurezas", "Peso promedio", "Disolucion", "Uniformidad de contenido", "Control microbiologico", "Humedad en cascarilla", "Humedad en contenido", "Dureza", "Espesores", "Uniformidad de unidades de dosificacion", "Perdida por Secado", "Check list de autorizacion", "Hoja de trabajo instrumental HPLC", "Solucion", "Otros analisis". Si no es obvio, selecciona la etiqueta mas cercana al texto.
-3. **Texto literal siempre:** Respeta ortografia, mayusculas y simbolos del documento. No resumes ni corriges. Si un campo es opcional y no hay informacion, usa `null` o `[]`.
-4. **Condiciones cromatograficas:** Si se listan columna, fase movil, flujo, temperatura o gradiente, llevalas a `condiciones_cromatograficas` con pares `nombre_condicion`/`valor_condicion`. Si hay tabla de gradiente, usa `tabla_gradiente` (tiempo, proporcion_a, proporcion_b). Extrae los solventes de fase movil en `solventes_fase_movil` (ej: ["Agua (grado HPLC)", "Acetonitrilo"]). Notas adicionales van en `notas`.
-5. **Soluciones:** Captura cada encabezado de solucion/fase movil/buffer/diluyente de esta prueba. `nombre_solucion` es el encabezado literal. `preparacion_solucion` es el bloque completo de preparacion copiado tal cual, desde la linea debajo del encabezado hasta antes del siguiente encabezado de solucion, procedimiento o criterio. Usa `notas` solo para aclaraciones textuales que no sean cantidades.
-6. **Procedimiento:** Incluye solo el procedimiento de la prueba (no de las soluciones). Copia el bloque completo en `procedimiento.texto`. Usa `procedimiento.notas` para aclaraciones breves y `procedimiento.tiempo_retencion` si el texto trae tiempos relativos/factores de respuesta.
-7. **Criterio de aceptacion:** Copia el texto literal en `criterio_aceptacion.texto`. Si hay tabla de etapas (S1/S2), llena `tabla_criterios` con `etapa`, `unidades_analizadas` y `criterio_aceptacion`. Notas opcionales en `notas`.
-8. **Equipos y reactivos:** Lista literal de equipos o reactivos mencionados explicitamente en esta prueba (no agregues globales no vistos).
-9. **Procedimiento SST:** Si se describe orden de inyeccion para adecuabilidad del sistema, registra cada entrada con `solucion`, `numero_inyecciones`, `test_adecuabilidad` y `especificacion`. Si no existe, deja `[]`.
+  **condiciones_de_disolucion**
+  - SOLO aplica para test_type="Disolución"
+  - Incluye: medio, aparato, temperatura, velocidad, tiempo, volumen a retirar, Q
 
-## Formato de salida (JSON valido, EXACTAMENTE UN elemento en `tests`)
+  **soluciones**
+  - Elimina números de sección del nombre: "7.5.2.1 Fase Móvil" → "Fase Móvil"
+  - Preserva preparación exacta verbatim
 
-**REGLA CRÍTICA:** El array `tests` debe contener **EXACTAMENTE 1 objeto**. NUNCA generes 2 o más elementos en el array. Si detectas que estás a punto de duplicar el contenido, DETENTE inmediatamente.
-```json
-{{
-  "tests": [
-    {{
-      "section_id": "...",
-      "section_title": "...",
-      "test_name": "...",
-      "test_type": "...",
-      "condiciones_cromatograficas": {{
-        "condiciones": [
+  **procedimiento.sst**
+  - SOLO aplica para análisis por HPLC, UHPLC o CG
+  - Extrae tabla completa: solución, número de inyecciones, test de adecuabilidad, especificación, anexo
+
+  **calculos**
+  - Extrae fórmula EXACTA como aparece en el documento
+  - Cada variable de la fórmula DEBE tener su definición (sección "donde")
+  - parametros_uniformidad_contenido: SOLO para test de uniformidad de contenido
+
+  **criterio_aceptacion**
+  - Extrae texto exacto de criterios
+  - Si hay tabla de etapas (S1, S2, S3), incluirla en tabla_criterios
+
+  **notas**
+  - Extrae como lista de strings
+  - Elimina numeración: "Nota 1: Texto" → "Texto"
+  </instrucciones_por_campo>
+
+  <ejemplos_completos>
+
+  **EJEMPLO 1: Test de Valoración por HPLC**
+
+  <texto_ejemplo_1>
+  7.5 VALORACIÓN DE ACETAMINOFÉN (Cubierta) (HPLC)
+  7.5.1 Condiciones cromatográficas
+  Columna: C18 (250 x 4.6) mm; 5 µm
+  Modo: HPLC
+  Temperatura de la columna: 25°C
+  Fase Móvil: Metanol: Agua (1:3). Ver preparación ítem 7.5.2.1
+  Detector UV/DAD: 243 nm
+  Flujo: 1.0 mL/min
+  Volumen de Inyección: 10 µL
+  Tiempo de Corrida: 10 minutos
+
+  Nota: Las proporciones a preparar de Fase Móvil son 1:3 (Metanol:Agua).
+
+  7.5.2 Soluciones
+  7.5.2.1 Fase Móvil
+  Mezclar Metanol grado HPLC y Agua grado HPLC en proporción 1:3.
+
+  7.5.2.2 Solución Stock Estándar
+  Pesar exactamente 50 mg de Estándar de Acetaminofén (USP) en un matraz aforado de 50 mL. Disolver y llevar a volumen con Metanol. Esta solución contiene una concentración teórica de 1 mg/mL de Acetaminofén.
+
+  7.5.2.3 Solución Estándar
+  Transferir 5.0 mL de la Solución Stock Estándar a un matraz aforado de 50 mL y llevar a volumen con Fase Móvil. Filtrar a través de membrana de nylon de 0.45 µm.
+
+  7.5.2.4 Solución Stock Muestra
+  Pesar no menos de 20 unidades. Triturar hasta polvo fino. Pesar una cantidad del polvo equivalente a 50 mg de Acetaminofén en un matraz aforado de 50 mL. Agregar 25 mL de Metanol, agitar en baño ultrasónico por 15 minutos, enfriar y llevar a volumen con Metanol. Filtrar, descartando los primeros 5 mL del filtrado.
+
+  7.5.2.5 Solución Muestra
+  Transferir 5.0 mL de la Solución Stock Muestra a un matraz aforado de 50 mL y llevar a volumen con Fase Móvil. Filtrar a través de membrana de nylon de 0.45 µm.
+  Nota: Preparar por duplicado.
+
+  7.5.3 Procedimiento y SST
+  A. Estabilizar el sistema cromatográfico con las condiciones establecidas hasta obtener una línea base estable.
+  B. Inyectar la Fase Móvil y verificar la ausencia de picos interferentes.
+  C. Realizar el orden de inyección según la tabla de SST.
+  D. Una vez cumplido el SST, inyectar en el siguiente orden: Solución Estándar (1 inyección), Solución Muestra (duplicado).
+
+  Realizar el orden de Inyección según lo establecido en la siguiente tabla:
+  Solución | Número de inyecciones | Test de adecuabilidad | Especificación | Anexo No.
+  Fase Móvil | 1 | N.A. | N.A. | N.A.
+  Solución Estándar | 5 | Desviación Estándar Relativa de las Áreas (RSD) | El valor de RSD debe ser menor o igual a 2.0% | 1
+  Solución Estándar | 1 (Por cada réplica) | Factor de Exactitud; Factor de Cola | El factor de exactitud debe estar entre 0.98 y 1.02; El factor de cola no debe ser mayor de 2.0 | 2
+
+  Nota: Si el sistema no cumple con el SST, investigar la causa y corregir antes de proceder.
+
+  7.5.4 Cálculos
+  % Acetaminofén = (ru / rs) x (Ws / Wm) x (Vd / Va) x 100 x P
+
+  Donde:
+  ru: Respuesta promedio del pico de Acetaminofén en la Solución Muestra
+  rs: Respuesta promedio del pico de Acetaminofén en la Solución Estándar
+  Ws: Peso del estándar de trabajo (mg)
+  Wm: Peso de la muestra tomada (mg)
+  Vd: Volumen de dilución final de la muestra (mL)
+  Va: Volumen alícuota de la solución stock de muestra tomada para dilución (mL)
+  P: Potencia del estándar de trabajo expresada en decimal (ej: 0.999)
+
+  7.5.5 Criterio de Aceptación
+  90.0 – 110.0% de la cantidad declarada de Acetaminofén por tableta.
+  Tipo: Liberación y Estabilidad
+  Nota: El resultado se reporta como porcentaje de la cantidad declarada por unidad de dosificación.
+
+  7.5.6 Equipos
+  Cromatógrafo Líquido de Alta Resolución, Matraces aforados de 50 mL, Baño de ultrasonido, Filtros de membrana de nylon 0.45 µm
+
+  7.5.7 Reactivos
+  Estándar de Acetaminofén USP, Metanol grado HPLC, Agua grado HPLC
+
+  Referencias: USP, INTERNA
+  </texto_ejemplo_1>
+
+  <json_ejemplo_1>
+  {{
+    "tests": [
+      {{
+        "section_id": "7.5",
+        "section_title": "VALORACIÓN DE ACETAMINOFÉN (Cubierta) (HPLC)",
+        "test_name": "Valoración de Acetaminofén por HPLC",
+        "test_type": "Valoración",
+        "condiciones_cromatograficas": {{
+          "condiciones": [
+            {{"nombre_condicion": "Modo", "valor_condicion": "HPLC"}},
+            {{"nombre_condicion": "Columna", "valor_condicion": "C18 (250 x 4.6) mm; 5 µm"}},
+            {{"nombre_condicion": "Temperatura de la columna", "valor_condicion": "25°C"}},
+            {{"nombre_condicion": "Fase Móvil", "valor_condicion": "Metanol: Agua (1:3). Ver preparación ítem 7.5.2.1"}},
+            {{"nombre_condicion": "Detector UV/DAD", "valor_condicion": "243 nm"}},
+            {{"nombre_condicion": "Flujo", "valor_condicion": "1.0 mL/min"}},
+            {{"nombre_condicion": "Volumen de Inyección", "valor_condicion": "10 µL"}},
+            {{"nombre_condicion": "Tiempo de Corrida", "valor_condicion": "10 minutos"}}
+          ],
+          "solventes_fase_movil": ["Metanol grado HPLC", "Agua grado HPLC"],
+          "notas": ["Las proporciones a preparar de Fase Móvil son 1:3 (Metanol:Agua)."]
+        }},
+        "soluciones": [
           {{
-            "nombre_condicion": "...",
-            "valor_condicion": "..."
+            "nombre_solucion": "Fase Móvil",
+            "preparacion_solucion": "Mezclar Metanol grado HPLC y Agua grado HPLC en proporción 1:3."
+          }},
+          {{
+            "nombre_solucion": "Solución Stock Estándar",
+            "preparacion_solucion": "Pesar exactamente 50 mg de Estándar de Acetaminofén (USP) en un matraz aforado de 50 mL. Disolver y llevar a volumen con Metanol. Esta solución contiene una concentración teórica de 1 mg/mL de Acetaminofén.",
+            "concentracion_teorica": "1 mg/mL de Acetaminofén"
+          }},
+          {{
+            "nombre_solucion": "Solución Estándar",
+            "preparacion_solucion": "Transferir 5.0 mL de la Solución Stock Estándar a un matraz aforado de 50 mL y llevar a volumen con Fase Móvil. Filtrar a través de membrana de nylon de 0.45 µm."
+          }},
+          {{
+            "nombre_solucion": "Solución Stock Muestra",
+            "preparacion_solucion": "Pesar no menos de 20 unidades. Triturar hasta polvo fino. Pesar una cantidad del polvo equivalente a 50 mg de Acetaminofén en un matraz aforado de 50 mL. Agregar 25 mL de Metanol, agitar en baño ultrasónico por 15 minutos, enfriar y llevar a volumen con Metanol. Filtrar, descartando los primeros 5 mL del filtrado."
+          }},
+          {{
+            "nombre_solucion": "Solución Muestra",
+            "preparacion_solucion": "Transferir 5.0 mL de la Solución Stock Muestra a un matraz aforado de 50 mL y llevar a volumen con Fase Móvil. Filtrar a través de membrana de nylon de 0.45 µm.",
+            "notas": ["Preparar por duplicado."]
           }}
         ],
-        "tabla_gradiente": [
+        "procedimiento": {{
+          "texto": "A. Estabilizar el sistema cromatográfico con las condiciones establecidas hasta obtener una línea base estable.\nB. Inyectar la Fase Móvil y verificar la ausencia de picos interferentes.\nC. Realizar el orden de inyección según la tabla de SST.\nD. Una vez cumplido el SST, inyectar en el siguiente orden: Solución Estándar (1 inyección), Solución Muestra (duplicado).",
+          "sst": {{
+            "descripcion": "Realizar el orden de Inyección según lo establecido en la siguiente tabla:",
+            "tabla_orden_inyeccion": [
+              {{
+                "solucion": "Fase Móvil",
+                "numero_inyecciones": "1",
+                "test_adecuabilidad": "N.A.",
+                "especificacion": "N.A.",
+                "anexo_no": "N.A."
+              }},
+              {{
+                "solucion": "Solución Estándar",
+                "numero_inyecciones": "5",
+                "test_adecuabilidad": "Desviación Estándar Relativa de las Áreas (RSD)",
+                "especificacion": "El valor de RSD debe ser menor o igual a 2.0%",
+                "anexo_no": "1"
+              }},
+              {{
+                "solucion": "Solución Estándar",
+                "numero_inyecciones": "1 (Por cada réplica)",
+                "test_adecuabilidad": "Factor de Exactitud; Factor de Cola",
+                "especificacion": "El factor de exactitud debe estar entre 0.98 y 1.02; El factor de cola no debe ser mayor de 2.0",
+                "anexo_no": "2"
+              }}
+            ],
+            "notas": ["Si el sistema no cumple con el SST, investigar la causa y corregir antes de proceder."]
+          }}
+        }},
+        "calculos": {{
+          "formulas": [
+            {{
+              "descripcion": "Cálculo del porcentaje de Acetaminofén en la muestra.",
+              "formula": "% Acetaminofén = (ru / rs) x (Ws / Wm) x (Vd / Va) x 100 x P",
+              "variables": [
+                {{"simbolo": "ru", "definicion": "Respuesta promedio del pico de Acetaminofén en la Solución Muestra"}},
+                {{"simbolo": "rs", "definicion": "Respuesta promedio del pico de Acetaminofén en la Solución Estándar"}},
+                {{"simbolo": "Ws", "definicion": "Peso del estándar de trabajo (mg)"}},
+                {{"simbolo": "Wm", "definicion": "Peso de la muestra tomada (mg)"}},
+                {{"simbolo": "Vd", "definicion": "Volumen de dilución final de la muestra (mL)"}},
+                {{"simbolo": "Va", "definicion": "Volumen alícuota de la solución stock de muestra tomada para dilución (mL)"}},
+                {{"simbolo": "P", "definicion": "Potencia del estándar de trabajo expresada en decimal (ej: 0.999)"}}
+              ]
+            }}
+          ]
+        }},
+        "criterio_aceptacion": {{
+          "texto": "90.0 – 110.0% de la cantidad declarada de Acetaminofén por tableta.",
+          "tipo_criterio": "Liberación y Estabilidad",
+          "notas": ["El resultado se reporta como porcentaje de la cantidad declarada por unidad de dosificación."]
+        }},
+        "equipos": [
+          "Cromatógrafo Líquido de Alta Resolución",
+          "Matraces aforados de 50 mL",
+          "Baño de ultrasonido",
+          "Filtros de membrana de nylon 0.45 µm"
+        ],
+        "reactivos": [
+          "Estándar de Acetaminofén USP",
+          "Metanol grado HPLC",
+          "Agua grado HPLC"
+        ],
+        "referencias": ["USP", "INTERNA"]
+      }}
+    ]
+  }}
+  </json_ejemplo_1>
+
+  **EJEMPLO 2: Test de Uniformidad de Contenido**
+
+  <texto_ejemplo_2>
+  7.6 UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN (Uniformidad de Contenido; Acetaminofén) (USP)
+
+  7.6.1 Soluciones
+  7.6.1.1 Solución Diluyente
+  Mezclar Metanol y Agua en proporción 1:1.
+
+  7.6.1.2 Solución Muestra Individual
+  Colocar 1 tableta completa en un matraz aforado de 100 mL. Agregar 50 mL de Solución Diluyente. Agitar en baño ultrasónico por 15 minutos. Enfriar y llevar a volumen con Solución Diluyente. Filtrar, descartando los primeros 5 mL del filtrado.
+
+  7.6.2 Cálculos
+  mg Acetaminofen/unidad = (ru / rs) x Cs x D
+
+  Donde:
+  ru: Respuesta del pico de Acetaminofén en la Solución Muestra Individual
+  rs: Respuesta promedio del pico de Acetaminofén en la Solución Estándar (de la Valoración)
+  Cs: Concentración de la Solución Estándar (mg/mL)
+  D: Factor de dilución de la muestra (100 mL)
+
+  Tabla 1. Parámetros de uniformidad de contenido
+  Variable | Definición | Condiciones | Valor
+  X̄ | Media de los contenidos individuales (mg/unidad) | | 
+  χ₁, χ₂, ..., χₙ | Contenidos individuales de cada unidad analizada | |
+  S | Desviación estándar de la muestra | |
+  RSD | Desviación estándar relativa (%) | | 100 * (S / X̄)
+  L1 | Límite de aceptación para la etapa 1 | Para 10 unidades | 15.0
+  L2 | Límite de aceptación para la etapa 2 | Para 20 unidades (si S1 falla) | 25.0
+
+  7.6.3 Criterio de Aceptación
+  Cumplir con los criterios de la USP <905> Uniformidad de Unidades de Dosificación.
+
+  Tabla de criterios:
+  Etapa | Unidades analizadas | Criterio de aceptación
+  S1 | 10 | AV ≤ L1. Si AV > L1, proceder a S2.
+  S2 | 20 | AV ≤ L2. Si AV > L2, el lote NO cumple.
+
+  Tipo: Liberación
+
+  Referencias: USP <905>
+  </texto_ejemplo_2>
+
+  <json_ejemplo_2>
+  {{
+    "tests": [
+      {{
+        "section_id": "7.6",
+        "section_title": "UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN (Uniformidad de Contenido; Acetaminofén) (USP)",
+        "test_name": "Uniformidad de Contenido de Acetaminofén",
+        "test_type": "Uniformidad de contenido",
+        "soluciones": [
           {{
-            "tiempo": ...,
-            "proporcion_a": ...,
-            "proporcion_b": ...
+            "nombre_solucion": "Solución Diluyente",
+            "preparacion_solucion": "Mezclar Metanol y Agua en proporción 1:1."
+          }},
+          {{
+            "nombre_solucion": "Solución Muestra Individual",
+            "preparacion_solucion": "Colocar 1 tableta completa en un matraz aforado de 100 mL. Agregar 50 mL de Solución Diluyente. Agitar en baño ultrasónico por 15 minutos. Enfriar y llevar a volumen con Solución Diluyente. Filtrar, descartando los primeros 5 mL del filtrado."
           }}
         ],
-        "solventes_fase_movil": ["Agua (grado HPLC)", "Acetonitrilo (grado HPLC)"],
-        "notas": ["..."]
-      }},
-      "soluciones": [
-        {{
-          "nombre_solucion": "...",
-          "preparacion_solucion": "...",
-          "notas": ["..."]
-        }}
-      ],
-      "procedimiento": {{
-        "texto": "...",
-        "notas": ["..."],
-        "tiempo_retencion": [
-          {{
-            "nombre": "...",
-            "tiempo_relativo_retencion": "...",
-            "factor_respuesta_relativa": "..."
-          }}
-        ]
-      }},
-      "criterio_aceptacion": {{
-        "texto": "...",
-        "notas": ["..."],
-        "tabla_criterios": [
-          {{
-            "etapa": "...",
-            "unidades_analizadas": "...",
-            "criterio_aceptacion": "..."
-          }}
-        ]
-      }},
-      "equipos": ["..."],
-      "reactivos": ["..."],
-      "procedimiento_sst": [
-        {{
-          "solucion": "...",
-          "numero_inyecciones": ...,
-          "test_adecuabilidad": "...",
-          "especificacion": "..."
-        }}
-      ]
-    }}
-  ]
-}}
-```
+        "calculos": {{
+          "formulas": [
+            {{
+              "descripcion": "Cálculo de la cantidad de Acetaminofén por unidad individual.",
+              "formula": "mg Acetaminofen/unidad = (ru / rs) x Cs x D",
+              "variables": [
+                {{"simbolo": "ru", "definicion": "Respuesta del pico de Acetaminofén en la Solución Muestra Individual"}},
+                {{"simbolo": "rs", "definicion": "Respuesta promedio del pico de Acetaminofén en la Solución Estándar (de la Valoración)"}},
+                {{"simbolo": "Cs", "definicion": "Concentración de la Solución Estándar (mg/mL)"}},
+                {{"simbolo": "D", "definicion": "Factor de dilución de la muestra (100 mL)"}}
+              ]
+            }}
+          ],
+          "parametros_uniformidad_contenido": [
+            {{"variable": "X̄", "definicion": "Media de los contenidos individuales (mg/unidad)", "condiciones": null, "valor": null}},
+            {{"variable": "χ₁, χ₂, ..., χₙ", "definicion": "Contenidos individuales de cada unidad analizada", "condiciones": null, "valor": null}},
+            {{"variable": "S", "definicion": "Desviación estándar de la muestra", "condiciones": null, "valor": null}},
+            {{"variable": "RSD", "definicion": "Desviación estándar relativa (%)", "condiciones": null, "valor": "100 * (S / X̄)"}},
+            {{"variable": "L1", "definicion": "Límite de aceptación para la etapa 1", "condiciones": "Para 10 unidades", "valor": "15.0"}},
+            {{"variable": "L2", "definicion": "Límite de aceptación para la etapa 2", "condiciones": "Para 20 unidades (si S1 falla)", "valor": "25.0"}}
+          ]
+        }},
+        "criterio_aceptacion": {{
+          "texto": "Cumplir con los criterios de la USP <905> Uniformidad de Unidades de Dosificación.",
+          "tipo_criterio": "Liberación",
+          "tabla_criterios": [
+            {{"etapa": "S1", "unidades_analizadas": "10", "criterio_aceptacion": "AV ≤ L1"}},
+            {{"etapa": "S2", "unidades_analizadas": "20", "criterio_aceptacion": "AV ≤ L2"}}
+          ]
+        }},
+        "referencias": ["USP <905>"]
+      }}
+    ]
+  }}
+  </json_ejemplo_2>
+  </ejemplos_completos>
 
-## Reglas finales
-- No cites informacion que no este en el markdown recibido.
-- Si el campo no aplica o no existe, usa `null` o `[]` segun corresponda.
-- Devuelve un JSON valido y nada mas.
-- **UN SOLO TEST:** El array `tests` debe tener EXACTAMENTE 1 elemento. Si generas más de 1, tu respuesta será inválida.
-- **ANTI-REPETICION:** NUNCA repitas el mismo texto mas de una vez. Si hay referencias como "Ver Anexo X" o "Ver item X", mencionala UNA SOLA VEZ en el campo `referencias` como lista corta. No generes secuencias repetitivas.
-- **LONGITUD MAXIMA:** El campo `referencias` debe tener maximo 5 elementos. Agrupa referencias similares si hay mas.
+  <formato_salida>
+  Devuelve ÚNICAMENTE un objeto JSON válido. Sin explicaciones, sin markdown, sin texto adicional.
+  </formato_salida>
 """
 
 UNIFIED_CHANGE_SYSTEM_ANALYSIS_PROMPT = """

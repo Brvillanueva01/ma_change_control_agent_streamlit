@@ -1,7 +1,6 @@
 """
 Modelo de datos mejorado para extracción estructurada de métodos analíticos farmacéuticos.
 Versión 2.2 - SST dentro de Procedimiento + preservación verbatim.
-
 Cambios principales:
 1. Añadido modelo Calculos con fórmula y definición de variables
 2. Mejorado OrdenInyeccion con campo anexo_no
@@ -43,6 +42,9 @@ class ProporcionesTiempo(BaseModel):
     tiempo: float = Field(..., description="Tiempo en minutos")
     proporcion_a: float = Field(..., description="Proporción o porcentaje de fase móvil A")
     proporcion_b: float = Field(..., description="Proporción o porcentaje de fase móvil B")
+    proporcion_c: float = Field(None, description="Proporción o porcentaje de fase móvil C")
+    proporcion_d: float = Field(None, description="Proporción o porcentaje de fase móvil D")
+    tiempo_corrida: Optional[float] = Field(..., description="Tiempo acumulado de corrida en minutos")
 
 
 class CondicionesCromatograficas(BaseModel):
@@ -124,7 +126,7 @@ class OrdenInyeccion(BaseModel):
         None,
         description=(
             "Nombre del test de adecuabilidad aplicado. Ejemplos: 'N.A.', 'Desviación Estándar Relativa de las Áreas (RSD)', "
-            "'Asimetría', 'Factor de Exactitud', 'Señal/Ruido (S/N)', 'Resolución'. "
+            "'Asimetría', 'Factor de Exactitud', 'Señal/Ruido (S/N)', 'Resolución'. 'Factor de Cola', 'Valor de aceptación (AV)''Factor de correlación', 'pico-valle'"
             "Si hay múltiples tests, separarlos con ';'"
         )
     )
@@ -161,8 +163,14 @@ class ProcedimientoSST(BaseModel):
 # Modelo de Cálculos
 #######################################################################################
 
+class CriterioAceptacionDisolucion(BaseModel):
+    """Criterio de aceptación específico para disolución."""
+    Etapa: str = Field(..., description="Etapa (ej: 'S1', 'S2', 'S3')")
+    Numero_unidades_analizadas: int = Field(..., description="Número de unidades analizadas. Ejemplo: 6, 6, 12")
+    Criterio_aceptacion: str = Field(..., description="Criterio de aceptación para esta etapa")
+
 class VariableCalculo(BaseModel):
-    """Definición de una variable usada en una fórmula de cálculo."""
+    """Variable usada en las fórmulas de cálculo."""
     simbolo: str = Field(
         ...,
         description="Símbolo de la variable (ej: 'ru', 'rs', 'Ws', '[ ]', 'Wm', 'Wp', 'T')"
@@ -172,29 +180,39 @@ class VariableCalculo(BaseModel):
         description="Definición de la variable tal como aparece en el documento"
     )
 
+class EcuacionCalculo(BaseModel):
+    """Ecuación usada en cálculos de uniformidad de contenido."""
 
-class Calculos(BaseModel):
-    """Sección de cálculos de una prueba analítica."""
-    formulas: List[str] = Field(
-        ...,
-        description=(
-            "Lista de fórmulas de cálculo tal como aparecen en el documento. "
+    descripcion: str = Field(..., description="Descripción de la ecuación de cálculo (ej: 'Cálculo de la concentración de Acetaminofén utilizando la respuesta del detector y el peso de la muestra.')")
+    formula: str = Field(...,description=(
+            "Fórmula de cálculo tal como aparece en el documento. "
             "Copiar la fórmula completa incluyendo el resultado esperado "
             "(ej: 'mg Acetaminofen/tab = ru x Ws(mg) x 2(mL) x ...')"
         )
     )
-    variables: Optional[List[VariableCalculo]] = Field(
-        None,
-        description="Lista de definiciones de variables que aparecen en la sección 'Dónde:'"
-    )
-    instrucciones_adicionales: Optional[str] = Field(
-        None,
-        description="Instrucciones adicionales de cálculo (ej: 'Para expresar el resultado en porcentaje...')"
-    )
-    notas: Optional[List[str]] = Field(
-        None,
-        description="Notas asociadas a los cálculos"
-    )
+    variables: List[VariableCalculo] = Field(..., description="Lista de definiciones de variables que aparecen en la ecuación")
+
+class ParametroUniformidadContenido(BaseModel):
+    """Parámetro usado en cálculos de uniformidad de contenido."""
+    variable:str = Field(..., description="Símbolo del parámetro (ej: 'X̄', 'χ₁, χ₂, ..., χₙ', 'N', 'K', 'S', 'RSD', 'M (caso 1) a ser aplicado cuando T < 101.5)','M (caso 1) a ser aplicado cuando T > 101.5)', L₁, L₂', T)")
+    definicion: Optional[str] = Field(..., description="Definición del parámetro tal como aparece en el documento")
+    condiocnes: Optional[str] = Field(None, description="Condiciones de aplicación del parámetro")
+    valor: Optional[str] = Field(None, description="Valor o fórmula del parámetro")
+
+class InterprestacionResultadosDisolucion(BaseModel):
+    """Interpretación de resultados para disolución."""
+    Titulo: str = Field(..., description="Título de la interpretación (ej: 'Interpretación de Resultados de Disolución')")
+    CriterioAceptacion: List[CriterioAceptacionDisolucion] = Field(..., description="Lista de criterios de aceptación por etapas")
+
+#######################################################################################
+# Cálculos
+#######################################################################################
+
+class Calculos(BaseModel):
+    """Sección de cálculos de una prueba analítica."""
+    formulas: List[EcuacionCalculo] = Field(..., description="Lista de ecuaciones de cálculo con definiciones de variables")
+    parametros_uniformidad_contenido: Optional[List[ParametroUniformidadContenido]] = Field(..., description="Lista de parámetros usados en cálculos de uniformidad de contenido si aplica")
+    interpretacion_resultados_disolucion: Optional[InterprestacionResultadosDisolucion] = Field(None, description="Interpretación de resultados para disolución si aplica")
 
 
 #######################################################################################
