@@ -18,6 +18,9 @@ from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import httpx
+
 from src.graph.state import DeepAgentState
 from src.prompts.tool_description_prompts import TEST_SOLUTION_STRUCTURED_EXTRACTION_TOOL_DESC
 from src.prompts.tool_llm_calls_prompts import TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT, TEST_SOLUTION_STRUCTURED_EXTRACTION_HUMAN_PROMPT
@@ -25,32 +28,77 @@ from src.models.structured_test_model import TestSolutions
 
 logger = logging.getLogger(__name__)
 
+MAX_LLM_RETRIES = 3
+
 DEFAULT_BASE_PATH = "/actual_method"
-TEST_SOLUTION_MARKDOWN_DOC_NAME = "/actual_method/test_solution_markdown.json"
-TEST_SOLUTION_STRUCTURED_DIR = "/actual_method/test_solution_structured"
-TEST_SOLUTION_STRUCTURED_CONTENT = "/actual_method/test_solution_structured_content.json"
+
+# Mapeo de base_path a carpeta temporal correspondiente
+TEMP_DIR_MAPPING = {
+    "/actual_method": "/temp_actual_method",
+    "/proposed_method": "/temp_proposed_method",
+}
 
 
 # LLM para Herramientas
 llm_model = init_chat_model(model="openai:gpt-5-mini")
 
+
+@retry(
+    stop=stop_after_attempt(MAX_LLM_RETRIES),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type((httpx.RemoteProtocolError, httpx.ReadTimeout, ConnectionError)),
+    reraise=True,
+)
+def _invoke_structured_llm(structured_model, messages):
+    """Invoca el LLM con retry automático para errores de conexión."""
+    logger.debug("Invocando LLM para extracción estructurada...")
+    return structured_model.invoke(messages)
+
+def _get_temp_dir(base_path: str) -> str:
+    """Obtiene la carpeta temporal correspondiente al base_path."""
+    base = (base_path or DEFAULT_BASE_PATH).rstrip("/")
+    return TEMP_DIR_MAPPING.get(base, f"/temp{base}")
+
+
+def _extract_source_file_name(path: str) -> str:
+    """Extrae el nombre del archivo fuente de una ruta de markdown.
+    
+    Ejemplo: '/actual_method/test_solution_markdown_MA 100000346.json' -> 'MA 100000346'
+    """
+    import re
+    # Buscar patrón test_solution_markdown_{nombre}.json
+    match = re.search(r'test_solution_markdown_(.+)\.json$', path)
+    if match:
+        return match.group(1)
+    # Fallback: usar el nombre del archivo sin extensión
+    filename = path.rsplit('/', 1)[-1]
+    return filename.rsplit('.', 1)[0]
+
+
 @tool(description=TEST_SOLUTION_STRUCTURED_EXTRACTION_TOOL_DESC)
 def test_solution_structured_extraction(
     id: int,
+    source_file_name: str,
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId] = "",
     base_path: str = DEFAULT_BASE_PATH,
 ) -> Command:
+    """
+    Extrae y estructura una prueba/solución individual del markdown.
     
+    Args:
+        id: Índice de la prueba en el archivo markdown
+        source_file_name: Nombre del archivo de origen (sin extensión)
+        base_path: Ruta base (/actual_method o /proposed_method)
+    """
     base = (base_path or DEFAULT_BASE_PATH).rstrip("/")
-    markdown_doc = f"{base}/test_solution_markdown.json"
-    structured_dir = f"{base}/test_solution_structured"
-    structured_content = f"{base}/test_solution_structured_content.json"
+    temp_dir = _get_temp_dir(base_path)
+    markdown_doc = f"{base}/test_solution_markdown_{source_file_name}.json"
 
     files = dict(state.get("files", {}))
     test_solution_markdown = files.get(markdown_doc)
     if not test_solution_markdown:
-        message = "No se encontró el archivo de markdown para la solución de prueba."
+        message = f"No se encontró el archivo de markdown: {markdown_doc}"
         logger.warning(message)
         return Command(
             update={
@@ -60,7 +108,7 @@ def test_solution_structured_extraction(
     
     test_solution_markdown_data = test_solution_markdown.get("data") or {}
     if not test_solution_markdown_data:
-        message = "No se encontró el archivo de markdown para la solución de prueba."
+        message = f"El archivo {markdown_doc} no contiene datos válidos."
         logger.warning(message)
         return Command(
             update={
@@ -102,18 +150,19 @@ def test_solution_structured_extraction(
     test_solution_string = json.dumps(target_item, indent=2, ensure_ascii=False)
     
     structured_model = llm_model.with_structured_output(TestSolutions)
-    test_solution_input = structured_model.invoke(
-        [
-            SystemMessage(
-                content=TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT
-            ),
-            HumanMessage(
-                content=TEST_SOLUTION_STRUCTURED_EXTRACTION_HUMAN_PROMPT.format(
-                    test_solution_string=test_solution_string
-                )
+    messages = [
+        SystemMessage(
+            content=TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT
+        ),
+        HumanMessage(
+            content=TEST_SOLUTION_STRUCTURED_EXTRACTION_HUMAN_PROMPT.format(
+                test_solution_string=test_solution_string
             )
-        ]
-    )
+        )
+    ]
+    
+    # Usar función con retry para manejar errores de conexión
+    test_solution_input = _invoke_structured_llm(structured_model, messages)
     test_solution_input = test_solution_input.model_dump()
 
     # Validación: asegurar que solo haya un test (el LLM a veces duplica)
@@ -125,7 +174,10 @@ def test_solution_structured_extraction(
             test_solution_input["tests"] = [test_solution_input["tests"][0]]
 
     test_solution_input["source_id"] = id
-    structured_file_path = f"{structured_dir}/{id}.json"
+    test_solution_input["source_file_name"] = source_file_name
+    
+    # Guardar en carpeta temporal: /temp_{base_path}/{source_file_name}/{id}.json
+    structured_file_path = f"{temp_dir}/{source_file_name}/{id}.json"
 
     content_str = json.dumps(test_solution_input, indent=2, ensure_ascii=False)
     files[structured_file_path] = {
@@ -135,8 +187,8 @@ def test_solution_structured_extraction(
     }
 
     summary_message = (
-        "Generé la solución de prueba estructurada para el identificador: "
-        f"{id}. Archivo: {structured_file_path}"
+        f"Generé la solución de prueba estructurada para '{source_file_name}' id={id}. "
+        f"Archivo temporal: {structured_file_path}"
     )
     logger.info(summary_message)
 

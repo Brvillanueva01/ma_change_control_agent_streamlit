@@ -9,6 +9,7 @@ from src.tools.test_solution_clean_markdown_sbs import test_solution_clean_markd
 from src.tools.pdf_da_metadata_toc import pdf_da_metadata_toc
 from src.tools.sbs_proposed_column import sbs_proposed_column_to_pdf_md
 from src.tools.render_method_docx import render_method_docx
+from src.tools.resolve_source_references import resolve_source_references
 
 __all__ = [
     "extract_annex_cc",
@@ -22,4 +23,5 @@ __all__ = [
     "pdf_da_metadata_toc",
     "sbs_proposed_column_to_pdf_md",
     "render_method_docx",
+    "resolve_source_references",
 ]

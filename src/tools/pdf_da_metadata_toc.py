@@ -38,7 +38,16 @@ from src.prompts.tool_description_prompts import PDF_DA_METADATA_TOC_TOOL_DESC
 
 logger = logging.getLogger(__name__)
 
-TEST_METADATA_TOC_DOC_NAME = "/actual_method/method_metadata_TOC.json"
+DEFAULT_BASE_PATH = "/actual_method"
+
+
+def _extract_source_file_name(pdf_path: str) -> str:
+    """Extrae el nombre del archivo fuente de una ruta de PDF.
+    
+    Ejemplo: 'D:/docs/MA 100000346.pdf' -> 'MA 100000346'
+    """
+    filename = Path(pdf_path).stem  # Nombre sin extensión
+    return filename
 
 # ============================================================
 # Utilidades PDF
@@ -543,9 +552,21 @@ def pdf_da_metadata_toc(
     dir_method: str,
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
-    base_path: str = "/actual_method",
+    base_path: str = DEFAULT_BASE_PATH,
 ) -> Command:
-    document_name = f"{base_path}/method_metadata_TOC.json"
+    """
+    Procesa un PDF de método analítico y extrae metadata + TOC + markdown.
+    
+    Args:
+        dir_method: Ruta al archivo PDF
+        base_path: Ruta base (/actual_method o /proposed_method)
+    
+    El nombre del archivo de salida incluye el nombre del PDF de origen.
+    """
+    # Extraer source_file_name del nombre del PDF
+    source_file_name = _extract_source_file_name(dir_method)
+    base = (base_path or DEFAULT_BASE_PATH).rstrip("/")
+    document_name = f"{base}/method_metadata_TOC_{source_file_name}.json"
 
     # 1. Procesar PDF
     try:
@@ -573,6 +594,15 @@ def pdf_da_metadata_toc(
     )
 
     logger.info("Completed processing %s", document_name)
+    
+    # Agregar source_file_name al payload para uso downstream
+    if full_model_instance:
+        if isinstance(full_model_instance, dict):
+            full_model_instance["source_file_name"] = source_file_name
+        elif hasattr(full_model_instance, "__dict__"):
+            # Para modelos Pydantic, agregar al dict serializado
+            pass  # Se agrega en serialized_data abajo
+    
     summary_message = _build_annotation_summary(full_model_instance)
 
     files = dict(state.get("files", {}))
@@ -580,6 +610,7 @@ def pdf_da_metadata_toc(
     # 6. Guardar JSON estructurado del metodo completo
     if full_model_instance:
         serialized_data = _model_instance_to_dict(full_model_instance)
+        serialized_data["source_file_name"] = source_file_name
         toc_metrics = _build_toc_markdown_metrics(
             serialized_data.get("tabla_de_contenidos"), full_markdown
         )
@@ -595,16 +626,22 @@ def pdf_da_metadata_toc(
     else:
         files[document_name] = {
             "content": ["{}"],
-            "data": {},
+            "data": {"source_file_name": source_file_name},
             "modified_at": datetime.now(timezone.utc).isoformat(),
         }
 
+
+    enhanced_summary = (
+        f"{summary_message}\n"
+        f"Archivo guardado: {document_name}\n"
+        f"source_file_name: '{source_file_name}' (usar este valor en las siguientes herramientas)"
+    )
 
     return Command(
         update={
             "files": files,
             "messages": [
-                ToolMessage(summary_message, tool_call_id=tool_call_id)
+                ToolMessage(enhanced_summary, tool_call_id=tool_call_id)
             ],
         }
     )

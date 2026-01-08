@@ -30,8 +30,6 @@ from src.prompts.tool_description_prompts import TEST_SOLUTION_CLEAN_MARKDOWN_TO
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_PATH = "/actual_method"
-TEST_SOLUTION_MARKDOWN_DOC_NAME = "/actual_method/test_solution_markdown.json"
-TEST_METADATA_TOC_DOC_NAME = "/actual_method/method_metadata_TOC.json"
 
 CHUNK_SIZE_TOKENS = 3000
 CHUNK_OVERLAP_TOKENS = 0
@@ -656,16 +654,16 @@ def _build_markdown_segments(
     return results
 
 
-def _metadata_toc_path(base_path: str) -> str:
+def _metadata_toc_path(base_path: str, source_file_name: str) -> str:
     """Genera la ruta del archivo de metadata/TOC."""
     base = (base_path or DEFAULT_BASE_PATH).rstrip("/")
-    return f"{base}/method_metadata_TOC.json"
+    return f"{base}/method_metadata_TOC_{source_file_name}.json"
 
 
-def _markdown_doc_path(base_path: str) -> str:
+def _markdown_doc_path(base_path: str, source_file_name: str) -> str:
     """Genera la ruta del archivo de markdown de pruebas/soluciones."""
     base = (base_path or DEFAULT_BASE_PATH).rstrip("/")
-    return f"{base}/test_solution_markdown.json"
+    return f"{base}/test_solution_markdown_{source_file_name}.json"
 
 
 @traceable(name="test_solution_clean_markdown")
@@ -710,6 +708,7 @@ def _run_extraction_pipeline(full_markdown: str) -> List[Dict[str, Optional[str]
 
 @tool(description=TEST_SOLUTION_CLEAN_MARKDOWN_TOOL_DESC)
 def test_solution_clean_markdown(
+    source_file_name: str,
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
     base_path: str = DEFAULT_BASE_PATH,
@@ -717,6 +716,10 @@ def test_solution_clean_markdown(
     """
     Herramienta que extrae pruebas/soluciones del markdown usando chunking + LLM.
 
+    Args:
+        source_file_name: Nombre del archivo de origen (sin extensión, ej: 'MA 100000346')
+        base_path: Ruta base (/actual_method o /proposed_method)
+    
     Nuevo enfoque:
     1. Divide el markdown en chunks usando RecursiveCharacterTextSplitter
     2. Extrae encabezados de cada chunk en paralelo con GPT-4.1-mini
@@ -724,8 +727,8 @@ def test_solution_clean_markdown(
     4. Construye los segmentos de markdown para cada prueba
     """
     files = dict(state.get("files", {}))
-    metadata_doc_name = _metadata_toc_path(base_path)
-    markdown_doc_name = _markdown_doc_path(base_path)
+    metadata_doc_name = _metadata_toc_path(base_path, source_file_name)
+    markdown_doc_name = _markdown_doc_path(base_path, source_file_name)
 
     method_metadata_TOC = files.get(metadata_doc_name)
 
@@ -734,7 +737,7 @@ def test_solution_clean_markdown(
             update={
                 "messages": [
                     ToolMessage(
-                        "No se encontró el archivo method_metadata_TOC.json",
+                        f"No se encontró el archivo {metadata_doc_name}",
                         tool_call_id=tool_call_id,
                     )
                 ],
@@ -749,7 +752,7 @@ def test_solution_clean_markdown(
             update={
                 "messages": [
                     ToolMessage(
-                        "El archivo method_metadata_TOC.json no contiene markdown consolidado.",
+                        f"El archivo {metadata_doc_name} no contiene markdown consolidado.",
                         tool_call_id=tool_call_id,
                     )
                 ],
@@ -780,8 +783,8 @@ def test_solution_clean_markdown(
     total_items = len(tests_with_markdown)
     populated_items = sum(1 for item in tests_with_markdown if item.get("markdown"))
     summary_message = (
-        f"Extracción completada: {total_items} pruebas/soluciones identificadas mediante chunking + LLM; "
-        f"{populated_items} incluyen markdown extraído."
+        f"Extracción completada para '{source_file_name}': {total_items} pruebas/soluciones identificadas; "
+        f"{populated_items} incluyen markdown extraído. Archivo: {markdown_doc_name}"
     )
 
     return Command(

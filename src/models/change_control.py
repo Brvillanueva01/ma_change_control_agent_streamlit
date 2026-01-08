@@ -64,6 +64,10 @@ class CambioPruebaAnalitica(BaseModel):
     metodologia_actual: Optional[str] = Field(default=None, description="Metodología actual (Titulación, HPLC, IR, etc.)")
     metodologia_propuesta: Optional[str] = Field(default=None, description="Metodología propuesta")
     referencia: Optional[str] = Field(default=None, description="Referencia farmacopeica (USP, COFA, Interna, etc.)")
+    source_reference_file: Optional[str] = Field(
+        default=None, 
+        description="Nombre del archivo/método de referencia de donde proviene la prueba propuesta (ej: '01-3850', '01-4279', 'MA 400006238'). Extraer del texto cuando menciona 'tomar de referencia', 'contemplado en el método', etc."
+    )
 
 
 class PruebaNueva(BaseModel):
@@ -72,6 +76,10 @@ class PruebaNueva(BaseModel):
     criterio: str = Field(description="Criterio de aceptación")
     metodologia: str = Field(description="Metodología analítica")
     referencia: Optional[str] = Field(default=None, description="Referencia farmacopeica")
+    source_reference_file: Optional[str] = Field(
+        default=None, 
+        description="Nombre del archivo/método de referencia de donde proviene la prueba (ej: '01-3850', '01-4279', 'MA 400006238'). Extraer del texto cuando menciona 'tomar de referencia', 'contemplado en el método', 'transcribir de', etc."
+    )
 
 
 class ProductoAfectado(BaseModel):

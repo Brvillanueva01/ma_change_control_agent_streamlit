@@ -17,19 +17,20 @@ PDF_DA_METADATA_TOC_TOOL_DESC = """
   - **PDF obligatorio:** Solo acepta archivos con extensión `.pdf`. Valida la ruta antes de llamar la herramienta.
   - **Chunking automático:** El OCR administra la división del PDF y la comunicación con Mistral, no intentes dividirlo manualmente.
   - **TOC exhaustiva:** Siempre busca capturar todos los sub-encabezados numerados (ej. `5.1`, `5.1.1`, etc.) dentro de `tabla_de_contenidos`.
+  - **source_file_name:** El nombre del archivo PDF (sin extensión) se extrae automáticamente y se usa para nombrar los archivos de salida.
 
   ## Parámetros
   - `dir_method (str)`: Ruta absoluta al archivo PDF del método analítico.
+  - `base_path (str)`: Ruta base donde se guardarán los archivos. Default: `/actual_method`. Usa `/proposed_method` para métodos de referencia.
 
   ## Salida y efectos en el estado
-  - **ToolMessage:** Devuelve un resumen con el número de campos poblados y la longitud del markdown consolidado.
+  - **ToolMessage:** Devuelve un resumen con el número de campos poblados, la longitud del markdown consolidado, y el `source_file_name` a usar en las siguientes herramientas.
   - **Estado (`state['files']`):**
-    - Guarda el JSON estructurado en `/actual_method/method_metadata_TOC.json`.
-    - `state['files'][...]['data']` contiene el objeto `MetodoAnaliticoCompleto` (incluyendo `full_markdown`).
-    - `state['files'][...]['content']` almacena la misma información serializada como string.
+    - Guarda el JSON estructurado en `{base_path}/method_metadata_TOC_{source_file_name}.json`.
+    - `state['files'][...]['data']` contiene el objeto `MetodoAnaliticoCompleto` (incluyendo `full_markdown` y `source_file_name`).
 
   ## Siguiente paso esperado
-  - Tras ejecutar esta herramienta, pasa a las herramientas de limpieza de pruebas/soluciones usando el markdown disponible en `/actual_method/method_metadata_TOC.json`.
+  - Tras ejecutar esta herramienta, pasa a `test_solution_clean_markdown(source_file_name="...")` usando el `source_file_name` indicado en el ToolMessage.
   - No vuelvas a ejecutar esta herramienta para el mismo PDF a menos que haya cambios en el documento fuente.
 """
 
@@ -37,37 +38,37 @@ PDF_DA_METADATA_TOC_TOOL_DESC = """
 # Test/Solution Clean Markdown tool description
 #############################################################################################################
 TEST_SOLUTION_CLEAN_MARKDOWN_TOOL_DESC = """
-  Lee el archivo `{base_path}/method_metadata_TOC.json`, usa el TOC completo para identificar pruebas y soluciones mediante un LLM y recorta el markdown específico de cada una. El resultado se almacena en `{base_path}/test_solution_markdown.json`, listo para las herramientas posteriores de extracción estructurada.
+  Lee el archivo `{base_path}/method_metadata_TOC_{source_file_name}.json`, usa el TOC completo para identificar pruebas y soluciones mediante un LLM y recorta el markdown específico de cada una. El resultado se almacena en `{base_path}/test_solution_markdown_{source_file_name}.json`.
 
   ## Cuándo usar
-  - Ejecuta esta herramienta inmediatamente después de `pdf_da_metadata_toc`, dentro del Legacy Migration Agent.
-  - Úsala siempre que necesites generar el listado de pruebas/soluciones con su markdown para alimentar las herramientas de limpieza y extracción estructurada.
+  - Ejecuta esta herramienta inmediatamente después de `pdf_da_metadata_toc`, dentro del Legacy Migration Agent o Reference Methods Agent.
+  - Úsala siempre que necesites generar el listado de pruebas/soluciones con su markdown para alimentar las herramientas de extracción estructurada.
 
   ## Buenas Prácticas
-  - **Precondición:** Asegúrate de que `state['files']` contenga `{base_path}/method_metadata_TOC.json` con `tabla_de_contenidos` (incluida hasta el último subnivel) y `markdown_completo`.
+  - **Precondición:** Asegúrate de que `state['files']` contenga `{base_path}/method_metadata_TOC_{source_file_name}.json` con `tabla_de_contenidos` y `markdown_completo`.
   - **Pre-procesamiento:** Esta herramienta elimina automáticamente la TABLA DE CONTENIDO y extrae SOLO la sección PROCEDIMIENTOS/DESARROLLO para evitar duplicados de ESPECIFICACIONES.
-  - **Detección de encabezados:** El LLM (`gpt-5-mini`) produce un objeto `TestMethodsFromChunk`; cada entrada debe tener `raw`, `section_id` y `title`.
-  - **Extracción de markdown:** El código compara los encabezados contra el markdown pre-procesado para recortar el texto entre encabezados consecutivos.
+  - **source_file_name obligatorio:** Debes pasar el `source_file_name` que recibiste del paso anterior (pdf_da_metadata_toc).
 
   ## Parámetros
+  - `source_file_name (str)`: Nombre del archivo de origen (sin extensión). **OBLIGATORIO**.
   - `base_path (str)`: Ruta base donde se encuentran los archivos. Default: `/actual_method`.
 
   ## Salida y efectos en el estado
-  - **ToolMessage:** Reporta cuántas pruebas/soluciones se generaron y cuántas obtuvieron markdown.
-  - **Estado (`state['files']`):** Crea/actualiza `{base_path}/test_solution_markdown.json` con:
+  - **ToolMessage:** Reporta cuántas pruebas/soluciones se generaron, cuántas obtuvieron markdown, y la ruta del archivo generado.
+  - **Estado (`state['files']`):** Crea/actualiza `{base_path}/test_solution_markdown_{source_file_name}.json` con:
     - `full_markdown`: texto consolidado del método.
     - `toc_entries`: TOC usado para la inferencia.
     - `items`: lista de `{raw, title, section_id, markdown}` para cada prueba o solución.
 
   ## Siguiente Paso Esperado
-  - Con este archivo disponible, ejecuta `test_solution_structured_extraction` u otras herramientas que consumen los segmentos de markdown para producir test methods parametrizados o textos limpios.
+  - Con este archivo disponible, ejecuta `test_solution_structured_extraction(id=..., source_file_name="...")` para cada ítem.
 """
 
 #############################################################################################################
 # Test/Solution Clean Markdown SBS (Side-by-Side) tool description
 #############################################################################################################
 TEST_SOLUTION_CLEAN_MARKDOWN_SBS_TOOL_DESC = """
-  Version especializada para documentos Side-by-Side. Lee el archivo `{base_path}/method_metadata_TOC.json` generado por `sbs_proposed_column_to_pdf_md` y extrae pruebas/soluciones del markdown de la columna propuesta.
+  Version especializada para documentos Side-by-Side. Lee el archivo `{base_path}/method_metadata_TOC_{source_file_name}.json` generado por `sbs_proposed_column_to_pdf_md` y extrae pruebas/soluciones del markdown de la columna propuesta.
 
   ## Cuando usar
   - Ejecuta esta herramienta inmediatamente despues de `sbs_proposed_column_to_pdf_md`, dentro del Side-by-Side Agent.
@@ -79,76 +80,86 @@ TEST_SOLUTION_CLEAN_MARKDOWN_SBS_TOOL_DESC = """
   - Optimizado para Side-by-Side: disenado para documentos comparativos con formato de tabla.
 
   ## Buenas Practicas
-  - Precondicion: Asegurate de que `state['files']` contenga `{base_path}/method_metadata_TOC.json` con `markdown_completo` (solo markdown; no se esperan campos de TOC ni APIs).
+  - Precondicion: Asegurate de que `state['files']` contenga `{base_path}/method_metadata_TOC_{source_file_name}.json` con `markdown_completo`.
   - Ruta tipica: Usa `base_path="/proposed_method"` (valor por defecto) para documentos Side-by-Side.
+  - **source_file_name obligatorio:** Debes pasar el `source_file_name` que recibiste del paso anterior.
 
   ## Parametros
-  - `base_path (str)`: Ruta base donde se encuentran los archivos. Default: `/proposed_method` (puedes ajustarlo si necesitas otro prefijo).
+  - `source_file_name (str)`: Nombre del archivo de origen (sin extension). **OBLIGATORIO**.
+  - `base_path (str)`: Ruta base donde se encuentran los archivos. Default: `/proposed_method`.
 
   ## Salida y efectos en el estado
-  - ToolMessage: Reporta cuantas pruebas/soluciones se generaron y cuantas obtuvieron markdown.
-  - Estado (`state['files']`): Crea/actualiza `{base_path}/test_solution_markdown.json` con:
+  - ToolMessage: Reporta cuantas pruebas/soluciones se generaron, cuantas obtuvieron markdown, y la ruta del archivo generado.
+  - Estado (`state['files']`): Crea/actualiza `{base_path}/test_solution_markdown_{source_file_name}.json` con:
     - `full_markdown`: texto consolidado del metodo propuesto.
     - `toc_entries`: encabezados identificados.
     - `items`: lista de `{raw, title, section_id, markdown}` para cada prueba o solucion.
 
   ## Siguiente Paso Esperado
-  - Con este archivo disponible, ejecuta `test_solution_structured_extraction(base_path="/proposed_method")` para estructurar cada prueba.
+  - Con este archivo disponible, ejecuta `test_solution_structured_extraction(id=..., source_file_name="...", base_path="/proposed_method")` para cada item.
 """
 
 #############################################################################################################
 # Test/Solution Structured Extraction tool description
 #############################################################################################################
 TEST_SOLUTION_STRUCTURED_EXTRACTION_TOOL_DESC = """
-  Convierte el markdown de una prueba o solución (generado por `test_solution_clean_markdown`) en un objeto estructurado `TestSolutions` y guarda cada resultado en `/actual_method/test_solution_structured/{{id}}.json`.
+  Convierte el markdown de una prueba o solución (generado por `test_solution_clean_markdown`) en un objeto estructurado `TestSolutions` y guarda cada resultado en una carpeta temporal para paralelización.
 
   ## Cuándo usar
-  - Ejecuta esta herramienta después de tener disponible `/actual_method/test_solution_markdown.json`.
+  - Ejecuta esta herramienta después de tener disponible `{base_path}/test_solution_markdown_{source_file_name}.json`.
   - Invócala una vez por cada entrada (prueba o solución) que desees estructurar, usando el parámetro `id` que corresponde al consecutivo generado en la herramienta anterior.
+  - **Ejecuta todas las llamadas en paralelo** para maximizar la eficiencia.
 
   ## Buenas Prácticas
-  - **Precondición:** Verifica que `state['files'][TEST_SOLUTION_MARKDOWN_DOC_NAME]['data']['items']` contenga la lista de pruebas/soluciones con el campo `markdown`. Sin este archivo la herramienta no puede operar.
-  - **Selección de ítem:** El parámetro `id` debe coincidir con el campo `id` presente en cada objeto de `items`. La herramienta intentará usar ese consecutivo; si no existe, notificará al agente con un mensaje claro.
-  - **Acumulación incremental:** Cada ejecución guarda un archivo independiente en `/actual_method/test_solution_structured/{{id}}.json`. Esto permite volver a consolidar las pruebas en cualquier momento ejecutando `consolidate_test_solution_structured`.
-  - **Modelo fijo:** El LLM `gpt-5-mini` está configurado con el prompt `TEST_SOLUTION_STRUCTURED_EXTRACTION_PROMPT` y el esquema Pydantic `TestSolutions`. No necesitas ajustar parámetros adicionales.
+  - **Precondición:** Verifica que el archivo de markdown exista con la lista de pruebas/soluciones.
+  - **Selección de ítem:** El parámetro `id` debe coincidir con el campo `id` presente en cada objeto de `items`.
+  - **Carpeta temporal:** Los archivos se guardan en `/temp_{base_path}/{source_file_name}/{{id}}.json` para permitir paralelización.
+  - **source_file_name obligatorio:** Debes pasar el mismo `source_file_name` usado en los pasos anteriores.
 
   ## Parámetros
-  - `id (int)`: Consecutivo asignado a la prueba/solución en `test_solution_markdown.json`.
+  - `id (int)`: Consecutivo asignado a la prueba/solución en `test_solution_markdown_{source_file_name}.json`. **OBLIGATORIO**.
+  - `source_file_name (str)`: Nombre del archivo de origen (sin extensión). **OBLIGATORIO**.
+  - `base_path (str)`: Ruta base. Default: `/actual_method`. Usa `/proposed_method` para side-by-side o métodos de referencia.
 
   ## Salida y efectos en el estado
-  - **ToolMessage:** Confirma qué identificador se procesó y recuerda la ruta del archivo de salida.
+  - **ToolMessage:** Confirma qué identificador se procesó, el source_file_name, y la ruta del archivo temporal.
   - **Estado (`state['files']`):**
-    - Crea o actualiza `/actual_method/test_solution_structured/{{id}}.json` con el objeto `TestSolutions` procesado.
-    - Cada archivo independiente conserva el `source_id` para rastrear el origen en `test_solution_markdown.json`.
+    - Crea o actualiza `/temp_{base_path}/{source_file_name}/{{id}}.json` con el objeto `TestSolutions` procesado.
+    - Cada archivo incluye `source_id` y `source_file_name` para trazabilidad.
 
   ## Siguiente Paso Esperado
-  - Una vez que hayas generado todos los archivos individuales, ejecuta `consolidate_test_solution_structured` para construir `/actual_method/test_solution_structured_content.json` y alimentar a los agentes de Test Method (determinístico/LLM) o los procesos de parametrización finales.
+  - Una vez que hayas generado todos los archivos individuales, ejecuta `consolidate_test_solution_structured(source_file_name="...")` para construir el archivo consolidado final.
 """
 
 #############################################################################################################
 # Test/Solution Structured Consolidation tool description
 #############################################################################################################
 TEST_SOLUTION_STRUCTURED_CONSOLIDATION_TOOL_DESC = """
-  Une los archivos generados por `test_solution_structured_extraction` (ubicados en `/actual_method/test_solution_structured/{{id}}.json`) dentro del archivo consolidado `/actual_method/test_solution_structured_content.json`.
+  Une los archivos temporales generados por `test_solution_structured_extraction` y crea el archivo consolidado final. También genera automáticamente un registro de pruebas analíticas en `/analytical_tests/`.
 
   ## Cuándo usar
   - Ejecuta esta herramienta después de haber procesado todos los `id` necesarios con `test_solution_structured_extraction`.
   - Vuelve a correrla cuando agregues o modifiques archivos individuales y necesites refrescar el archivo consolidado.
 
   ## Buenas Prácticas
-  - Asegúrate de que el estado contenga los archivos individuales en el prefijo `/actual_method/test_solution_structured/`.
-  - No requiere parámetros adicionales; detecta automáticamente todos los archivos `{{id}}.json` de esa carpeta virtual.
-  - Si algún archivo no incluye `source_id`, la herramienta lo inferirá con base en el nombre del archivo.
+  - Asegúrate de que el estado contenga los archivos temporales en `/temp_{base_path}/{source_file_name}/`.
+  - **source_file_name obligatorio:** Debes pasar el mismo `source_file_name` usado en los pasos anteriores.
+  - Los archivos temporales se eliminan automáticamente después de la consolidación.
 
   ## Parámetros
-  - No recibe parámetros adicionales. Invócala simplemente como `consolidate_test_solution_structured(state=..., tool_call_id=...)`.
+  - `source_file_name (str)`: Nombre del archivo de origen (sin extensión). **OBLIGATORIO**.
+  - `base_path (str)`: Ruta base. Default: `/actual_method`. Usa `/proposed_method` para side-by-side o métodos de referencia.
 
   ## Salida y efectos en el estado
-  - **ToolMessage:** Reporta cuántas pruebas/soluciones se consolidaron y la ruta del archivo final.
-  - **Estado (`state['files']`):** Crea o actualiza `/actual_method/test_solution_structured_content.json` como una lista ordenada de objetos `TestSolutions`.
+  - **ToolMessage:** Reporta cuántas pruebas/soluciones se consolidaron, la ruta del archivo final, y el registro de pruebas analíticas generado.
+  - **Estado (`state['files']`):**
+    - Crea o actualiza `{base_path}/test_solution_structured_content_{source_file_name}.json` como una lista ordenada de objetos `TestSolutions`.
+    - Crea o actualiza `/analytical_tests/{source_file_name}.json` con el registro de pruebas analíticas.
+    - Elimina los archivos temporales de `/temp_{base_path}/{source_file_name}/`.
 
   ## Siguiente Paso Esperado
-  - Usa el archivo consolidado para alimentar a los agentes de Test Method o a cualquier proceso que requiera todas las pruebas estructuradas en un solo JSON.
+  - Usa el archivo consolidado para alimentar a los agentes de implementación de cambios.
+  - El registro en `/analytical_tests/` estará disponible para referencia cruzada en `analyze_change_impact`.
 """
 
 EXTRACT_STRUCTURED_DATA_PROMPT_TOOL_DESC = """
@@ -187,24 +198,25 @@ CHANGE_CONTROL_ANALYSIS_TOOL_DESCRIPTION = """
   Analiza la información estructurada de control de cambios y genera un plan accionable para actualizar el método analítico.
 
   ## Cuándo usar
-  - Después de que existan los archivos procesados por `legacy_migration_agent`, `change_control_agent` y `side_by_side_agent`.
+  - Después de que existan los archivos procesados por `legacy_migration_agent`, `change_control_agent` y `side_by_side_agent` (o `reference_methods_agent`).
   - Cuando el supervisor necesita consolidar los cambios propuestos y traducirlos en instrucciones de edición sobre `/new/new_method_final.json`.
   - Úsala una sola vez por ciclo de implementación, una vez que todos los insumos relevantes estén listos.
 
-  ## Rutas de Archivos (FIJAS - NO CONFIGURABLES)
-  Esta herramienta usa rutas predeterminadas fijas:
-  - **Método legado:** `/actual_method/test_solution_structured_content.json`
-  - **Control de cambios:** `/new/change_control_summary.json`
-  - **Método propuesto:** `/proposed_method/test_solution_structured_content.json`
+  ## Búsqueda Automática de Archivos
+  Esta herramienta busca automáticamente TODOS los archivos con patrón `test_solution_structured_content_*.json` en:
+  - **Método legado:** `/actual_method/` (puede haber múltiples archivos)
+  - **Método propuesto:** `/proposed_method/` (puede haber múltiples archivos de side-by-side o métodos de referencia)
+  - **Control de cambios:** `/change_control/change_control_summary.json` (o `/new/change_control_summary.json` como fallback)
+  - **Registro de pruebas:** `/analytical_tests/` (opcional, para referencia cruzada)
   - **Salida:** `/new/change_implementation_plan.json`
 
   ## Buenas Prácticas
-  - **Precondición:** Asegúrate de que los tres archivos de entrada estén disponibles en el estado antes de llamar esta herramienta.
-  - **Contexto resumido:** No es necesario leer manualmente los archivos grandes; la herramienta los valida y extrae solo los campos necesarios para el LLM.
+  - **Precondición:** Asegúrate de que los archivos de entrada estén disponibles en el estado antes de llamar esta herramienta.
+  - **Múltiples fuentes:** La herramienta combina pruebas de múltiples archivos automáticamente, preservando `_source_file_name` para trazabilidad.
   - **Sin parámetros:** Llama al tool sin argumentos adicionales.
 
   ## Parámetros
-  - No requiere parámetros. Las rutas de archivos son fijas.
+  - No requiere parámetros. La herramienta busca archivos automáticamente.
 
   ## Salida y Efectos en el Estado
   - **Mensaje de Retorno (ToolMessage):** Resume la cantidad de acciones propuestas para implementar los cambios.
@@ -304,3 +316,38 @@ RENDER_METHOD_DOCX_TOOL_DESCRIPTION = """
   - Informar al supervisor que el documento esta listo.
   - El usuario puede abrir el archivo DOCX para revision final.
   """
+
+#############################################################################################################
+# Resolve Source References tool description
+#############################################################################################################
+RESOLVE_SOURCE_REFERENCES_TOOL_DESC = """
+  Resuelve las referencias de archivos fuente en el control de cambios, mapeando códigos de producto
+  a nombres de archivo reales en /actual_method/ y /proposed_method/.
+
+  ## Cuándo usar
+  - Ejecuta esta herramienta como **PRIMER PASO** del Change Implementation Agent, ANTES de `analyze_change_impact`.
+  - Úsala después de que todos los subagentes de carga (legacy_migration, side_by_side, reference_methods, change_control) 
+    hayan completado su trabajo.
+  - Es necesaria cuando el Control de Cambios menciona códigos de producto/método (ej: "01-4280", "400006238") 
+    que deben mapearse a los archivos reales procesados.
+
+  ## Qué hace
+  1. Lee los metadatos de `/actual_method/method_metadata_TOC_*.json` y `/proposed_method/method_metadata_TOC_*.json`
+  2. Construye un mapeo de códigos (codigo_producto, numero_metodo) → source_file_name
+  3. Lee `/new/change_control_summary.json`
+  4. Para cada `source_reference_file` en cambios y pruebas nuevas, resuelve el `source_file_name` correspondiente
+  5. Actualiza el CC summary con el campo `resolved_source_file_name`
+
+  ## Parámetros
+  - No requiere parámetros. Lee automáticamente del estado.
+
+  ## Salida y efectos en el estado
+  - **ToolMessage:** Resumen con cantidad de referencias resueltas y no resueltas.
+  - **Estado (`state['files']`):**
+    - Actualiza `/new/change_control_summary.json` con `resolved_source_file_name` en cada cambio/prueba nueva.
+    - Crea `/new/source_reference_mapping.json` con el reporte detallado del mapeo.
+
+  ## Siguiente Paso Esperado
+  - Ejecutar `analyze_change_impact` que ahora podrá usar `resolved_source_file_name` para hacer matching correcto.
+  """
+

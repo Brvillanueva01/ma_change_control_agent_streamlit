@@ -32,7 +32,12 @@ logger = logging.getLogger(__name__)
 
 PATCHES_DIR_DEFAULT = "/new/applied_changes"
 METHOD_DEFAULT_PATH = "/new/new_method_final.json"
-LEGACY_METADATA_DEFAULT_PATH = "/actual_method/method_metadata_TOC.json"
+
+# Directorios base para búsqueda dinámica de archivos
+ACTUAL_METHOD_DIR = "/actual_method"
+# Patrones para identificar archivos
+METADATA_TOC_PATTERN = re.compile(r"method_metadata_TOC_(.+)\.json$")
+STRUCTURED_CONTENT_PATTERN = re.compile(r"test_solution_structured_content_(.+)\.json$")
 
 # Campos de metadata que se copian del método legado al método final
 METADATA_FIELDS = [
@@ -173,6 +178,45 @@ def _find_prueba_entry(
     return None, None
 
 
+def _find_metadata_files(files: dict[str, Any], directory: str) -> List[str]:
+    """
+    Busca archivos con patrón method_metadata_TOC_*.json en un directorio.
+    """
+    found = []
+    dir_prefix = directory.rstrip("/") + "/"
+    for path in files.keys():
+        if path.startswith(dir_prefix) and METADATA_TOC_PATTERN.search(path):
+            found.append(path)
+    return sorted(found)
+
+
+def _find_structured_content_files(files: dict[str, Any], directory: str) -> List[str]:
+    """
+    Busca archivos con patrón test_solution_structured_content_*.json en un directorio.
+    """
+    found = []
+    dir_prefix = directory.rstrip("/") + "/"
+    for path in files.keys():
+        if path.startswith(dir_prefix) and STRUCTURED_CONTENT_PATTERN.search(path):
+            found.append(path)
+    return sorted(found)
+
+
+def _load_first_metadata(files: dict[str, Any], directory: str) -> Tuple[Optional[dict[str, Any]], Optional[str]]:
+    """
+    Carga el primer archivo de metadata encontrado en el directorio.
+    
+    Returns:
+        Tupla (metadata_dict, path_usado) o (None, None) si no se encuentra
+    """
+    metadata_files = _find_metadata_files(files, directory)
+    for file_path in metadata_files:
+        payload = _load_json_payload(files, file_path)
+        if payload and isinstance(payload, dict):
+            return payload, file_path
+    return None, None
+
+
 def _iter_patch_payloads(files: dict[str, Any], patches_dir: str) -> List[Tuple[str, dict[str, Any]]]:
     prefix = patches_dir.rstrip("/") + "/"
     collected: List[Tuple[str, dict[str, Any]]] = []
@@ -190,7 +234,7 @@ def consolidate_new_method(
     tool_call_id: Annotated[str, InjectedToolCallId],
     patches_dir: str = PATCHES_DIR_DEFAULT,
     base_method_path: str = METHOD_DEFAULT_PATH,
-    legacy_metadata_path: str = LEGACY_METADATA_DEFAULT_PATH,
+    legacy_metadata_path: str = "",  # Ahora usa búsqueda dinámica, este parámetro es solo fallback
     output_path: str = METHOD_DEFAULT_PATH,
 ) -> Command:
     logger.info("Iniciando 'consolidate_new_method'")
@@ -205,8 +249,42 @@ def consolidate_new_method(
     }
 
     base_payload = _load_json_payload(source_files, base_method_path)
+    base_source = base_method_path
+    
+    # Fallback: si no existe el método base especificado, cargar desde /actual_method/
     if base_payload is None:
-        msg = f"No se encontro el metodo base en {base_method_path}."
+        logger.warning(f"No se encontró método base en {base_method_path}, buscando en {ACTUAL_METHOD_DIR}/")
+        structured_files = _find_structured_content_files(source_files, ACTUAL_METHOD_DIR)
+        if structured_files:
+            # Cargar todas las pruebas de los archivos encontrados
+            all_tests = []
+            for file_path in structured_files:
+                file_payload = _load_json_payload(source_files, file_path)
+                if file_payload:
+                    if isinstance(file_payload, list):
+                        # Lista de wrappers con source_id y tests
+                        for wrapper in file_payload:
+                            if isinstance(wrapper, dict) and "tests" in wrapper:
+                                source_id = wrapper.get("source_id")
+                                for test in wrapper.get("tests", []):
+                                    if isinstance(test, dict):
+                                        test_copy = dict(test)
+                                        if source_id is not None:
+                                            test_copy["_source_id"] = source_id
+                                        all_tests.append(test_copy)
+                            elif isinstance(wrapper, dict):
+                                all_tests.append(wrapper)
+                    elif isinstance(file_payload, dict):
+                        tests = file_payload.get("tests") or file_payload.get("pruebas") or []
+                        all_tests.extend(tests)
+            
+            if all_tests:
+                base_payload = {"pruebas": all_tests}
+                base_source = f"{ACTUAL_METHOD_DIR}/ ({len(structured_files)} archivo(s), {len(all_tests)} pruebas)"
+                logger.info(f"Método base cargado desde {base_source}")
+    
+    if base_payload is None:
+        msg = f"No se encontró el método base en {base_method_path} ni en {ACTUAL_METHOD_DIR}/."
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
@@ -220,15 +298,21 @@ def consolidate_new_method(
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
-    # Cargar metadata del método legado
-    legacy_metadata = _load_json_payload(source_files, legacy_metadata_path)
+    # Cargar metadata del método legado (búsqueda dinámica)
+    legacy_metadata, metadata_path_used = _load_first_metadata(source_files, ACTUAL_METHOD_DIR)
     metadata_loaded = False
-    if legacy_metadata and isinstance(legacy_metadata, dict):
-        logger.info(f"Metadata del método legado cargada desde {legacy_metadata_path}")
+    if legacy_metadata:
+        logger.info(f"Metadata del método legado cargada desde {metadata_path_used}")
         metadata_loaded = True
     else:
-        logger.warning(f"No se encontró metadata del método legado en {legacy_metadata_path}")
-        legacy_metadata = {}
+        # Fallback: intentar con el parámetro legacy_metadata_path por compatibilidad
+        legacy_metadata = _load_json_payload(source_files, legacy_metadata_path)
+        if legacy_metadata and isinstance(legacy_metadata, dict):
+            logger.info(f"Metadata del método legado cargada desde {legacy_metadata_path} (fallback)")
+            metadata_loaded = True
+        else:
+            logger.warning(f"No se encontró metadata del método legado en {ACTUAL_METHOD_DIR}/ ni en {legacy_metadata_path}")
+            legacy_metadata = {}
 
     # Trabajar directamente con el dict sin validación Pydantic
     working_method = base_payload
@@ -298,9 +382,12 @@ def consolidate_new_method(
     files_update[output_path] = {"content": method_str, "data": method_dump, "modified_at": datetime.now(timezone.utc).isoformat()}
 
     metadata_msg = f", metadata copiada: {metadata_fields_copied} campos" if metadata_loaded else ", sin metadata"
+    base_msg = f" (base: {base_source})" if base_source != base_method_path else ""
+    pruebas_count = len(final_method.get("pruebas", []))
     tool_message = (
-        f"Metodo consolidado en {output_path}. "
-        f"Aplicadas: {applied}, omitidas: {skipped}, no encontradas: {missing}, parches leidos: {len(patches)}{metadata_msg}."
+        f"Metodo consolidado en {output_path}{base_msg}. "
+        f"Pruebas finales: {pruebas_count}. "
+        f"Parches aplicados: {applied}, omitidos: {skipped}, no encontrados: {missing}, parches leidos: {len(patches)}{metadata_msg}."
     )
     logger.info(tool_message)
 

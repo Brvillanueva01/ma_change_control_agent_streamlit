@@ -47,6 +47,10 @@ class CambioListaCambios(BaseModel):
     """Referencia a un cambio en la lista de cambios del control de cambios."""
     indice: int = Field(description="Índice del cambio en la lista de cambios (0-indexed)")
     texto: str = Field(description="Texto completo del cambio de /new/change_control_summary.json")
+    source_reference_file: Optional[str] = Field(
+        default=None,
+        description="Código del método/archivo de referencia de donde proviene la prueba propuesta"
+    )
 
 
 class ElementoMetodoPropuesto(BaseModel):
@@ -54,6 +58,10 @@ class ElementoMetodoPropuesto(BaseModel):
     prueba: str = Field(description="Nombre de la prueba en el método propuesto")
     indice: int = Field(description="Índice de la prueba en /proposed_method/test_solution_structured_content.json")
     source_id: Optional[int] = Field(default=None, description="source_id de la prueba en el método propuesto")
+    source_file_name: Optional[str] = Field(
+        default=None,
+        description="Nombre del archivo de origen en /proposed_method/ de donde proviene esta prueba"
+    )
 
 
 class UnifiedInterventionAction(BaseModel):
@@ -216,9 +224,11 @@ def _collect_prueba_records_with_index(
                 )
 
         if isinstance(nombre, str) and nombre.strip():
-            records.append(
-                {"prueba": nombre.strip(), "source_id": source_id, "indice": idx}
-            )
+            record = {"prueba": nombre.strip(), "source_id": source_id, "indice": idx}
+            # Preservar _source_file_name si existe (para pruebas de múltiples archivos)
+            if isinstance(prueba, dict) and "_source_file_name" in prueba:
+                record["_source_file_name"] = prueba["_source_file_name"]
+            records.append(record)
         else:
             logger.warning(f"Prueba en índice {idx} no tiene nombre válido: {prueba}")
 
@@ -427,11 +437,92 @@ def _invoke_llm_with_retry(
 # --- Tool principal ---
 
 # --- Constantes de rutas ---
-LEGACY_METHOD_DEFAULT_PATH = "/actual_method/test_solution_structured_content.json"
-CHANGE_CONTROL_DEFAULT_PATH = "/new/change_control_summary.json"
-PROPOSED_METHOD_DEFAULT_PATH = "/proposed_method/test_solution_structured_content.json"
-
+ACTUAL_METHOD_DIR = "/actual_method"
+PROPOSED_METHOD_DIR = "/proposed_method"
+ANALYTICAL_TESTS_DIR = "/analytical_tests"
+CHANGE_CONTROL_DEFAULT_PATH = "/change_control/change_control_summary.json"
 CHANGE_IMPLEMENTATION_PLAN_PATH = "/new/change_implementation_plan.json"
+
+# Patrón para identificar archivos de contenido estructurado
+import re
+STRUCTURED_CONTENT_PATTERN = re.compile(r"test_solution_structured_content_(.+)\.json$")
+
+
+def _find_structured_content_files(files: Dict[str, Any], base_dir: str) -> List[str]:
+    """Encuentra todos los archivos test_solution_structured_content_*.json en un directorio."""
+    found = []
+    prefix = base_dir.rstrip("/") + "/"
+    for path in files.keys():
+        if isinstance(path, str) and path.startswith(prefix):
+            if STRUCTURED_CONTENT_PATTERN.search(path):
+                found.append(path)
+    return sorted(found)
+
+
+def _load_all_tests_from_directory(files: Dict[str, Any], base_dir: str) -> List[Dict[str, Any]]:
+    """
+    Carga y combina todas las pruebas de todos los archivos estructurados en un directorio.
+    Preserva source_file_name para trazabilidad.
+    """
+    all_tests = []
+    structured_files = _find_structured_content_files(files, base_dir)
+    
+    for file_path in structured_files:
+        payload = _safe_get_file_data(files, file_path)
+        if payload is None:
+            continue
+        
+        # Extraer source_file_name de la ruta
+        match = STRUCTURED_CONTENT_PATTERN.search(file_path)
+        source_file_name = match.group(1) if match else "unknown"
+        
+        # Extraer pruebas
+        if base_dir == ACTUAL_METHOD_DIR:
+            tests = _extract_tests_from_legacy(payload)
+        else:
+            tests = _extract_tests_from_proposed(payload)
+        
+        # Agregar source_file_name a cada prueba
+        for test in tests:
+            if isinstance(test, dict):
+                test["_source_file_name"] = source_file_name
+        
+        all_tests.extend(tests)
+        logger.info(f"  Cargadas {len(tests)} pruebas de {file_path}")
+    
+    return all_tests
+
+
+def _load_analytical_tests_registry(files: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Carga todos los registros de /analytical_tests/ y los organiza por source_type.
+    
+    Retorna: {
+        "actual_method": [{source_file, tests: [...]}],
+        "proposed_method": [{source_file, tests: [...]}]
+    }
+    """
+    registry = {
+        "actual_method": [],
+        "proposed_method": [],
+    }
+    
+    prefix = ANALYTICAL_TESTS_DIR.rstrip("/") + "/"
+    
+    for path, entry in files.items():
+        if not isinstance(path, str) or not path.startswith(prefix):
+            continue
+        
+        payload = _safe_get_file_data(files, path)
+        if not isinstance(payload, dict):
+            continue
+        
+        source_type = payload.get("source_type", "unknown")
+        if source_type in registry:
+            registry[source_type].append(payload)
+            logger.debug(f"Cargado registro de pruebas: {path} ({source_type})")
+    
+    return registry
 
 
 
@@ -450,27 +541,44 @@ def analyze_change_impact(
     files = state.get("files", {}) or {}
     logger.info(f"Archivos disponibles: {len(files)}")
 
-    # --- Paso 1: Cargar payloads (safe) ---
+    # --- Paso 1: Cargar payloads desde múltiples archivos ---
     logger.info("Cargando archivos necesarios...")
 
+    # Cargar control de cambios
     cc_payload = _safe_get_file_data(files, CHANGE_CONTROL_DEFAULT_PATH)
-    proposed_payload = _safe_get_file_data(files, PROPOSED_METHOD_DEFAULT_PATH)
-    legacy_payload = _safe_get_file_data(files, LEGACY_METHOD_DEFAULT_PATH)  # puede ser None
-
+    if not isinstance(cc_payload, dict):
+        # Intentar ruta legacy
+        cc_payload = _safe_get_file_data(files, "/new/change_control_summary.json")
+    
     if not isinstance(cc_payload, dict):
         msg = f"ERROR: No se encontró (o es inválido) el control de cambios en {CHANGE_CONTROL_DEFAULT_PATH}."
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
+    logger.info("✓ Control de cambios cargado")
 
-    if proposed_payload is None:
-        msg = f"ERROR: No se encontró el método propuesto en {PROPOSED_METHOD_DEFAULT_PATH}."
+    # Cargar pruebas del método legado (puede haber múltiples archivos)
+    legacy_files = _find_structured_content_files(files, ACTUAL_METHOD_DIR)
+    if not legacy_files:
+        msg = f"ERROR: No se encontraron archivos de método legado en {ACTUAL_METHOD_DIR}/"
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
+    
+    legacy_tests_raw = _load_all_tests_from_directory(files, ACTUAL_METHOD_DIR)
+    logger.info(f"✓ Método legado cargado: {len(legacy_files)} archivo(s), {len(legacy_tests_raw)} pruebas")
 
-    logger.info("✓ Control de cambios cargado")
-    logger.info("✓ Método propuesto cargado")
-    if legacy_payload:
-        logger.info("✓ Método legado cargado")
+    # Cargar pruebas del método propuesto (puede haber múltiples archivos)
+    proposed_files = _find_structured_content_files(files, PROPOSED_METHOD_DIR)
+    if not proposed_files:
+        msg = f"ERROR: No se encontraron archivos de método propuesto en {PROPOSED_METHOD_DIR}/"
+        logger.error(msg)
+        return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
+    
+    proposed_tests_raw = _load_all_tests_from_directory(files, PROPOSED_METHOD_DIR)
+    logger.info(f"✓ Método propuesto cargado: {len(proposed_files)} archivo(s), {len(proposed_tests_raw)} pruebas")
+    
+    # Cargar registro de pruebas analíticas (opcional, para referencia cruzada)
+    analytical_registry = _load_analytical_tests_registry(files)
+    logger.info(f"✓ Registro de pruebas analíticas: {len(analytical_registry['actual_method'])} actual, {len(analytical_registry['proposed_method'])} propuesto")
 
     # --- Paso 2: Validación mínima de cambios ---
     logger.info("Extrayendo secciones de cambios del resumen...")
@@ -499,7 +607,7 @@ def analyze_change_impact(
     # --- Paso 3: Extraer y normalizar datos ---
     logger.info("Extrayendo y normalizando datos...")
 
-    legacy_tests_raw = _extract_tests_from_legacy(legacy_payload)
+    # Las pruebas ya fueron cargadas en el paso 1
     pruebas_metodo_legado = _collect_prueba_records_with_index(
         legacy_tests_raw,
         source_id_key="_source_id",
@@ -510,7 +618,6 @@ def analyze_change_impact(
     lista_cambios = cambios_struct
     logger.info(f"  → Cambios identificados: {cambios_count} cambios en pruebas + {nuevas_count} pruebas nuevas")
 
-    proposed_tests_raw = _extract_tests_from_proposed(proposed_payload)
     pruebas_metodo_propuesto = _collect_prueba_records_with_index(
         proposed_tests_raw,
         source_id_key="_source_id",

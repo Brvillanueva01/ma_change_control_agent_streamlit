@@ -35,7 +35,15 @@ DEFAULT_DPI = 200
 DEFAULT_HEADER_PERCENT = 0.12
 DEFAULT_MARGIN_PX = 5
 DEFAULT_MIN_CONFIDENCE = 0.3
-PROPOSED_METADATA_DOC_NAME = "/proposed_method/method_metadata_TOC.json"
+DEFAULT_BASE_PATH = "/proposed_method"
+
+
+def _extract_source_file_name(pdf_path: str) -> str:
+    """Extrae el nombre del archivo fuente de una ruta de PDF.
+    
+    Ejemplo: 'D:/docs/ANEXO NAPROXENO.pdf' -> 'ANEXO NAPROXENO'
+    """
+    return Path(pdf_path).stem
 
 
 def _pdf_to_images(pdf_path: str, dpi: int = DEFAULT_DPI) -> List[np.ndarray]:
@@ -304,9 +312,17 @@ def sbs_proposed_column_to_pdf_md(
         except OSError:
             pass
 
-    stored_data = {"markdown_completo": markdown} if markdown else {}
+    # Extraer source_file_name del nombre del PDF
+    source_file_name = _extract_source_file_name(str(resolved_path))
+    document_name = f"{DEFAULT_BASE_PATH}/method_metadata_TOC_{source_file_name}.json"
+    
+    stored_data = {
+        "markdown_completo": markdown,
+        "source_file_name": source_file_name,
+    } if markdown else {"source_file_name": source_file_name}
+    
     files = dict(state.get("files", {}))
-    files[PROPOSED_METADATA_DOC_NAME] = {
+    files[document_name] = {
         "content": _safe_json_dumps(stored_data),
         "data": stored_data,
         "modified_at": datetime.now(timezone.utc).isoformat(),
@@ -317,13 +333,13 @@ def sbs_proposed_column_to_pdf_md(
         warning_note = f" Separacion con baja confianza en paginas: {low_confidence}."
 
     final_message = (
-        f"Markdown del metodo propuesto guardado en {PROPOSED_METADATA_DOC_NAME}."
-        f"{warning_note}"
+        f"Markdown del metodo propuesto guardado en {document_name}.{warning_note}\n"
+        f"source_file_name: '{source_file_name}' (usar este valor en las siguientes herramientas)"
     )
     if markdown:
-        final_message += f" Total caracteres: {len(markdown)}."
+        final_message += f"\nTotal caracteres: {len(markdown)}."
     else:
-        final_message += " No se obtuvo texto de OCR."
+        final_message += "\nNo se obtuvo texto de OCR."
 
     return Command(
         update={

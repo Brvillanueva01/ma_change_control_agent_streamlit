@@ -508,7 +508,9 @@ UNIFIED_CHANGE_SYSTEM_ANALYSIS_PROMPT = """
         "tipo_cambio": "ACTUALIZACIÓN | ELIMINACIÓN | SIN_CAMBIO",
         "criterio_actual": "...",
         "criterio_propuesto": "...",
-        "referencia": "USP | COFA | Interna"
+        "referencia": "USP | COFA | Interna",
+        "source_reference_file": "Código original del método de referencia (ej: '01-3850', '400006238')",
+        "resolved_source_file_name": "Nombre del archivo resuelto en /proposed_method/ (ej: 'RM 400006237', 'MA 400004312') o null"
       }}
     ],
     "pruebas_nuevas": [
@@ -516,22 +518,31 @@ UNIFIED_CHANGE_SYSTEM_ANALYSIS_PROMPT = """
         "prueba": "Nombre de prueba nueva",
         "criterio": "...",
         "metodologia": "...",
-        "referencia": "..."
+        "referencia": "...",
+        "source_reference_file": "Código original del método de referencia",
+        "resolved_source_file_name": "Nombre del archivo resuelto o null"
       }}
     ]
   }}
   ```
 
-  **pruebas_metodo_propuesto**: Pruebas del método propuesto (de `/proposed_method/test_solution_structured_content.json`)
+  **pruebas_metodo_propuesto**: Pruebas de MÚLTIPLES archivos en `/proposed_method/` (cada uno con su `_source_file_name`)
   ```json
   [
     {{
       "prueba": "Nombre de la prueba",
       "source_id": 1,
-      "indice": 0
+      "indice": 0,
+      "_source_file_name": "Nombre del archivo de origen (ej: 'MA 400006238', 'RM 400004312')"
     }}
   ]
   ```
+  
+  **IMPORTANTE - MATCHING DE ARCHIVOS**: 
+  - El campo `resolved_source_file_name` en `lista_cambios` ya contiene el nombre del archivo resuelto.
+  - Usa `resolved_source_file_name` para hacer matching DIRECTO con `_source_file_name` de `pruebas_metodo_propuesto`.
+  - Si `resolved_source_file_name` es null, intenta matching por nombre de prueba sin filtrar por archivo.
+  - En la salida, copia el valor de `_source_file_name` al campo `source_file_name` (sin guión bajo).
   </estructura_entrada>
 
   <formato_salida>
@@ -549,12 +560,14 @@ UNIFIED_CHANGE_SYSTEM_ANALYSIS_PROMPT = """
         "accion": "editar | adicionar | eliminar | dejar igual",
         "cambio_lista_cambios": {{
           "indice": 0,
-          "texto": "Texto completo del cambio de /new/change_control_summary.json"
+          "texto": "Texto completo del cambio de /new/change_control_summary.json",
+          "source_reference_file": "Código del método de referencia o null"
         }},
         "elemento_metodo_propuesto": {{
           "prueba": "Nombre de prueba en el método propuesto",
           "indice": 0,
-          "source_id": 1
+          "source_id": 1,
+          "source_file_name": "Nombre del archivo de origen en /proposed_method/ (copiar de _source_file_name de la prueba)"
         }}
       }}
     ]
@@ -847,7 +860,13 @@ Tu tarea es extraer información **específica sobre las pruebas analíticas imp
 
 4. **NO COPIES TEXTO VERBATIM**: Sintetiza y estructura. Si dice "Se actualiza la redacción del criterio de aceptación de acuerdo con lo establecido en la USP vigente", tu output debe ser el VALOR concreto del criterio, no la descripción del cambio.
 
-5. **PRUEBAS NUEVAS**: Si el documento menciona que se ADICIONA o INCORPORA una prueba que no existía antes, agrégala en `pruebas_nuevas`.
+5. **PRUEBAS NUEVAS (CRÍTICO)**: Clasifica como `pruebas_nuevas` cualquier prueba que:
+   - Se ADICIONA o INCORPORA al documento receptor
+   - Se MIGRA o TRANSCRIBE desde otro documento/método de referencia
+   - Se INCLUYE desde una especificación técnica externa
+   - No existía previamente en el documento receptor (aunque exista en otro documento)
+   
+   **IMPORTANTE**: Si el CC menciona "transcribir", "migrar", "incluir", "tomar de referencia" pruebas de otro método (ej: 01-3850, 01-4279, 01-4280), TODAS esas pruebas son `pruebas_nuevas` para el documento receptor.
 
 ## MODELO DE SALIDA JSON
 
@@ -870,7 +889,8 @@ Tu tarea es extraer información **específica sobre las pruebas analíticas imp
       "criterio_propuesto": "Valor/límite propuesto o null si no aplica",
       "metodologia_actual": "Metodología actual o null",
       "metodologia_propuesta": "Metodología propuesta o null",
-      "referencia": "USP | COFA | Interna | null"
+      "referencia": "USP | COFA | Interna | null",
+      "source_reference_file": "Código del método/archivo de referencia de donde proviene la prueba propuesta (ej: '01-3850', '01-4279', '400006238') o null"
     }}
   ],
   "pruebas_nuevas": [
@@ -878,13 +898,31 @@ Tu tarea es extraer información **específica sobre las pruebas analíticas imp
       "prueba": "Nombre de la prueba nueva",
       "criterio": "Criterio de aceptación",
       "metodologia": "Metodología analítica",
-      "referencia": "Referencia farmacopeica o null"
+      "referencia": "Referencia farmacopeica o null",
+      "source_reference_file": "Código del método/archivo de referencia de donde proviene la prueba (ej: '01-3850', '01-4279', '400006238') o null"
     }}
   ],
   "prerrequisitos": ["Lista de prerrequisitos como Verificación analítica, etc."],
   "notas_operativas": ["Notas adicionales relevantes para la implementación"]
 }}
 ```
+
+## EXTRACCIÓN DE source_reference_file (CRÍTICO)
+
+**IMPORTANTE**: Cuando el documento menciona que una prueba debe "tomarse de referencia", "transcribirse de", o "contemplarse en" un método específico, DEBES extraer ese código de método como `source_reference_file`.
+
+**Patrones a buscar:**
+- "tomar de referencia la metodología... del método de análisis N°01-3850"
+- "transcribir el desarrollo analítico... contemplado en el método de análisis N°01-4279"
+- "tomar de referencia del GR 400006238"
+- "incluirlas de la especificación técnica y método de análisis código N°01-4280"
+
+**Ejemplo de extracción:**
+Si el texto dice: "Transcribir el desarrollo analítico para la VALORACION VITAMINA A contemplado en el método de análisis N°01-3850, código de GR 400004312"
+→ `source_reference_file`: "01-3850" o "400004312"
+
+Si el texto dice: "tomar de referencia la metodología... de la especificación técnica y método de análisis código N°01-4279 correspondiente al GR 400006238"
+→ `source_reference_file`: "01-4279" o "400006238"
 
 ## REGLAS DE GENERACIÓN DE CAMPOS
 
@@ -911,8 +949,10 @@ Tu tarea es extraer información **específica sobre las pruebas analíticas imp
 - Si el documento dice "se actualiza según USP", busca el valor específico.
 
 **`pruebas_nuevas`**:
-- Solo para pruebas que se ADICIONAN (no existían antes).
-- Incluye criterio, metodología y referencia.
+- Para TODAS las pruebas que se adicionan, migran, transcriben o incluyen desde otros documentos.
+- Si el CC dice "transcribir las pruebas del método 01-3850", CADA prueba mencionada va aquí.
+- Incluye criterio, metodología, referencia y `source_reference_file` (código del método de origen).
+- **Ejemplo**: Si el CC menciona migrar 14 valoraciones del método 01-3850, debes crear 14 entradas en `pruebas_nuevas`.
 
 **`prerrequisitos`**:
 - Actividades requeridas antes de implementar (ej: "Verificación analítica", "Validación de método").
@@ -957,6 +997,38 @@ Tu tarea es extraer información **específica sobre las pruebas analíticas imp
 **Output INCORRECTO (muy genérico):**
 ```json
 "A. Se actualiza la redacción del criterio de aceptación de la prueba de Descripción de acuerdo con lo establecido en la USP vigente."
+```
+
+**Texto de entrada (PRUEBAS MIGRADAS):**
+"Transcribir el desarrollo analítico para las pruebas de VALORACION VITAMINA A, VALORACION VITAMINA D y VALORACION VITAMINA E contempladas en el método de análisis N°01-3850, código de GR 400004312."
+
+**Output correcto (cada prueba migrada es una prueba_nueva):**
+```json
+{{
+  "pruebas_nuevas": [
+    {{
+      "prueba": "Valoración Vitamina A",
+      "criterio": "Según método 01-3850",
+      "metodologia": "HPLC",
+      "referencia": "Interna",
+      "source_reference_file": "01-3850"
+    }},
+    {{
+      "prueba": "Valoración Vitamina D",
+      "criterio": "Según método 01-3850",
+      "metodologia": "HPLC",
+      "referencia": "Interna",
+      "source_reference_file": "01-3850"
+    }},
+    {{
+      "prueba": "Valoración Vitamina E",
+      "criterio": "Según método 01-3850",
+      "metodologia": "HPLC",
+      "referencia": "Interna",
+      "source_reference_file": "01-3850"
+    }}
+  ]
+}}
 ```
 
 ## Texto de Entrada (Control de Cambio)

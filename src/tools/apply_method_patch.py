@@ -71,8 +71,12 @@ PLAN_DEFAULT_PATH = "/new/change_implementation_plan.json"
 METHOD_DEFAULT_PATH = "/new/new_method_final.json"
 PATCH_LOG_PATH = "/logs/change_patch_log.jsonl"
 PATCHES_DIR = "/new/applied_changes"
-LEGACY_METHOD_DEFAULT_PATH = "/actual_method/test_solution_structured_content.json"
-PROPOSED_METHOD_DEFAULT_PATH = "/proposed_method/test_solution_structured_content.json"
+
+# Directorios base para búsqueda dinámica de archivos
+ACTUAL_METHOD_DIR = "/actual_method"
+PROPOSED_METHOD_DIR = "/proposed_method"
+# Patrón para identificar archivos de contenido estructurado
+STRUCTURED_CONTENT_PATTERN = re.compile(r"test_solution_structured_content_(.+)\.json$")
 
 method_patch_model = init_chat_model(model="openai:gpt-5-mini")
 MAX_LLM_RETRIES = 3
@@ -341,6 +345,58 @@ def _load_json_payload(files: Dict[str, Any], path: str) -> Optional[Dict[str, A
     return None
 
 
+def _find_structured_content_files(files: Dict[str, Any], directory: str) -> List[str]:
+    """
+    Busca archivos con patrón test_solution_structured_content_*.json en un directorio.
+    
+    Args:
+        files: Diccionario de archivos del estado
+        directory: Directorio base (ej: '/actual_method')
+    
+    Returns:
+        Lista de rutas de archivos encontrados
+    """
+    found = []
+    dir_prefix = directory.rstrip("/") + "/"
+    for path in files.keys():
+        if path.startswith(dir_prefix) and STRUCTURED_CONTENT_PATTERN.search(path):
+            found.append(path)
+    return sorted(found)
+
+
+def _load_all_tests_from_directory(files: Dict[str, Any], directory: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """
+    Carga todas las pruebas de archivos test_solution_structured_content_*.json en un directorio.
+    
+    Args:
+        files: Diccionario de archivos del estado
+        directory: Directorio base (ej: '/actual_method')
+    
+    Returns:
+        Tupla (lista_de_pruebas, lista_de_archivos_usados)
+    """
+    all_tests: List[Dict[str, Any]] = []
+    used_files: List[str] = []
+    
+    content_files = _find_structured_content_files(files, directory)
+    
+    for file_path in content_files:
+        payload = _load_json_payload(files, file_path)
+        if payload is not None:
+            tests = load_tests(payload)
+            # Agregar _source_file_name a cada prueba para trazabilidad
+            match = STRUCTURED_CONTENT_PATTERN.search(file_path)
+            source_file_name = match.group(1) if match else None
+            for test in tests:
+                if source_file_name:
+                    test["_source_file_name"] = source_file_name
+            all_tests.extend(tests)
+            used_files.append(file_path)
+            logger.info(f"  Cargadas {len(tests)} pruebas de {file_path}")
+    
+    return all_tests, used_files
+
+
 
 
 def _build_method_summary(method_payload: dict[str, Any]) -> dict[str, Any]:
@@ -482,15 +538,15 @@ def apply_method_patch(
     if method_entry and isinstance(method_entry, (dict, list)):
         method_payload = method_entry
     else:
-        # Fallback al método legado
-        legacy_entry = _load_json_payload(files, LEGACY_METHOD_DEFAULT_PATH)
-        if legacy_entry is None:
-            msg = f"No se encontró ningún método en {new_method_path} ni en {LEGACY_METHOD_DEFAULT_PATH}."
+        # Fallback: buscar archivos con patrón dinámico en /actual_method/
+        legacy_tests, legacy_files = _load_all_tests_from_directory(files, ACTUAL_METHOD_DIR)
+        if not legacy_tests:
+            msg = f"No se encontró ningún método en {new_method_path} ni archivos test_solution_structured_content_*.json en {ACTUAL_METHOD_DIR}/."
             logger.error(msg)
             return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
         # Aplanar el método legado a un dict {"pruebas": [...]}
-        method_payload = {"pruebas": load_tests(legacy_entry)}
-        logger.info(f"Usando método legado como base: {len(method_payload['pruebas'])} pruebas.")
+        method_payload = {"pruebas": legacy_tests}
+        logger.info(f"Usando método legado como base: {len(method_payload['pruebas'])} pruebas de {len(legacy_files)} archivo(s).")
 
     # -------------------------------------------------------------------------
     # 3. Construir índice del método
@@ -513,18 +569,16 @@ def apply_method_patch(
     # -------------------------------------------------------------------------
     # 5. Cargar métodos de referencia para el LLM
     # -------------------------------------------------------------------------
-    # Cargar pruebas del método propuesto
-    proposed_tests: List[Dict[str, Any]] = []
-    proposed_entry = _load_json_payload(files, PROPOSED_METHOD_DEFAULT_PATH)
-    if proposed_entry is not None:
-        proposed_tests = load_tests(proposed_entry)
+    # Cargar pruebas del método propuesto (búsqueda dinámica)
+    proposed_tests, proposed_files = _load_all_tests_from_directory(files, PROPOSED_METHOD_DIR)
+    if proposed_tests:
+        logger.info(f"Cargadas {len(proposed_tests)} pruebas propuestas de {len(proposed_files)} archivo(s).")
     proposed_index = build_test_index(proposed_tests) if proposed_tests else {"by_wrapper": {}, "by_section": {}, "by_name": {}}
 
-    # Cargar pruebas del método legado (para referencia del LLM)
-    legacy_tests: List[Dict[str, Any]] = []
-    legacy_entry = _load_json_payload(files, LEGACY_METHOD_DEFAULT_PATH)
-    if legacy_entry is not None:
-        legacy_tests = load_tests(legacy_entry)
+    # Cargar pruebas del método legado (para referencia del LLM, búsqueda dinámica)
+    legacy_tests, legacy_files_ref = _load_all_tests_from_directory(files, ACTUAL_METHOD_DIR)
+    if legacy_tests:
+        logger.info(f"Cargadas {len(legacy_tests)} pruebas legadas de {len(legacy_files_ref)} archivo(s) para referencia.")
     legacy_index = build_test_index(legacy_tests) if legacy_tests else {"by_wrapper": {}, "by_section": {}, "by_name": {}}
 
     # Buscar prueba legacy original para el LLM
@@ -539,14 +593,40 @@ def apply_method_patch(
         idx_prop = action.elemento_metodo_propuesto.indice
         prop_id = action.elemento_metodo_propuesto.source_id
         prop_name = action.elemento_metodo_propuesto.prueba
+        prop_source_file = action.elemento_metodo_propuesto.source_file_name
         source_id_propuesto = prop_id
         
-        if idx_prop is not None and 0 <= idx_prop < len(proposed_tests):
-            prop_test = proposed_tests[idx_prop]
-        elif prop_id is not None:
-            _, prop_test = find_test(proposed_index, prop_id, None, None)
-        elif prop_name:
-            _, prop_test = find_test(proposed_index, None, None, prop_name)
+        # Si hay source_file_name, filtrar pruebas por ese archivo primero
+        if prop_source_file:
+            # Filtrar pruebas que coincidan con el source_file_name
+            filtered_tests = [
+                t for t in proposed_tests 
+                if t.get("_source_file_name") and prop_source_file in t.get("_source_file_name", "")
+            ]
+            if filtered_tests:
+                logger.info(f"Filtradas {len(filtered_tests)} pruebas del archivo '{prop_source_file}'")
+                # Buscar por índice dentro del archivo filtrado, o por nombre
+                if idx_prop is not None and 0 <= idx_prop < len(filtered_tests):
+                    prop_test = filtered_tests[idx_prop]
+                elif prop_name:
+                    # Buscar por nombre en las pruebas filtradas
+                    prop_name_norm = _normalize_name(prop_name)
+                    for t in filtered_tests:
+                        t_name = _normalize_name(t.get("test_name") or t.get("section_title") or t.get("prueba"))
+                        if t_name and prop_name_norm and prop_name_norm in t_name:
+                            prop_test = t
+                            break
+            else:
+                logger.warning(f"No se encontraron pruebas con source_file_name que contenga '{prop_source_file}'")
+        
+        # Fallback: búsqueda sin filtro de archivo (comportamiento original)
+        if prop_test is None:
+            if idx_prop is not None and 0 <= idx_prop < len(proposed_tests):
+                prop_test = proposed_tests[idx_prop]
+            elif prop_id is not None:
+                _, prop_test = find_test(proposed_index, prop_id, None, None)
+            elif prop_name:
+                _, prop_test = find_test(proposed_index, None, None, prop_name)
 
     method_summary = _build_method_summary(method_payload if isinstance(method_payload, dict) else {})
 
