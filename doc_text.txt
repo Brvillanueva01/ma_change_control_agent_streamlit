@@ -1,0 +1,371 @@
+﻿Descripción general
+Este documento proporciona una introducción de alto nivel a la extractor de am_bom_ sistema, un proceso de gestión de listas de materiales farmacéuticos (BOM) diseñado para extraer, consolidar y analizar requisitos de materiales a partir de documentos PDF del método analítico. El sistema consta de tres sistemas de agentes especializados que trabajan juntos para automatizar la extracción de reactivos químicos, estándares, columnas y consumibles a partir de documentos de métodos analíticos estructurados, mantener una base de datos BOM centralizada y generar informes de planificación de materiales basados en cronogramas de producción.
+Alcance: Esta página cubre la arquitectura general del sistema, los tres sistemas de agentes principales, los patrones de flujo de datos y la organización de herramientas. Para obtener información detallada sobre subsistemas específicos:
+Para conocer los patrones de delegación de agentes y la arquitectura de subagentes, consulte Jerarquía de delegación de agentes
+Para la gestión de estados y sistemas de archivos virtuales, consulte Gestión Estatal y Sistema Virtual de Archivos
+Para obtener detalles de cada agente, consulte sistema am_bom_extractor_agent, Sistema bd_bom_builder_agent, y sistema analítico_bom_planner
+Para modelos de datos y esquemas de validación, consulte Modelos y esquemas de datos
+Propósito y capacidades del sistema
+El sistema resuelve el problema de extraer manualmente los requisitos de material de los archivos PDF del método analítico. Los métodos analíticos en la fabricación farmacéutica describen procedimientos de prueba que requieren diversos insumos (reactivos, estándares, columnas, solventes), y el seguimiento de estos materiales a través de docenas o cientos de métodos es propenso a errores cuando se realiza manualmente. Este sistema:
+Extrae BOM estructuradas a partir de archivos PDF de métodos analíticos individuales utilizando OCR y extracción basada en LLM
+Mantiene una base de datos centralizada (BD_INSUMOS.json) que consolida materiales en todos los métodos
+Genera informes de planificación de materiales que calculan los requerimientos totales de materiales en función de los cronogramas de producción
+El sistema está construido sobre Gráfico de Lang y utiliza el agentes profundos marco para la orquestación de agentes, con subagentes especializados que manejan diferentes aspectos del flujo de trabajo de extracción y gestión.
+Arquitectura de tres agentes
+El sistema consta de tres agentes autónomos definidos en langgraph.json4-8que manejan responsabilidades distintas:
+
+Diagrama: Arquitectura de sistema de tres agentes con rutas de código
+El diagrama muestra el flujo de extremo a extremo con rutas de archivos reales y nombres de agentes tal como se definen en el código base.
+Fuentes: langgraph.json1-10src/tools/bd_bom_tools.py49-51
+Resumen de sistemas de agentes
+
+
+Agente
+Ruta del archivo
+Responsabilidad primaria
+Herramientas clave
+Salida
+am_bom_extractor_agent
+./src/graph/builder.py
+Extraer la lista de materiales de un solo PDF
+pdf_da_metadata_toc, test_solution_structured_extraction, bom_extraction_tool, bom_consolidation
+Archivos JSON de métodos individuales
+bd_bom_builder_agent
+./src/graph/bd_bom_builder.py
+Procesamiento masivo y gestión de bases de datos
+scan_pdf_folder, filter_new_methods, process_single_method, consolidate_to_database
+BD_INSUMOS.jsonbase de datos
+analytical_bom_planner
+./src/graph/analytical_planner.py
+Planificación y presentación de informes sobre materiales
+query_bd_insumos_status, calculate_insumos_totals, generate_planner_excel
+Informes de planificación de Excel
+Canalización completa del flujo de datos
+El siguiente diagrama ilustra el proceso completo de transformación de datos desde entradas PDF sin procesar hasta informes de planificación finales, utilizando rutas de archivos reales y nombres de herramientas del código base:
+
+Diagrama: Flujo de datos de extremo a extremo con nombres de herramientas y rutas de archivos
+Este diagrama une conceptos de lenguaje natural con entidades de código reales al mostrar nombres de funciones de herramientas, rutas de archivos y rutas de sistemas de archivos virtuales utilizados en todo el código base.
+Fuentes: src/herramientas/__init__.py1-54src/tools/bd_bom_tools.py56-60langgraph.json4-8
+Organización del ecosistema de herramientas
+El sistema implementa 23 herramientas especializadas organizados en tres categorías correspondientes a los tres agentes. Las herramientas están registradas en src/herramientas/__init__.py30-54 y exportado a través del __all__ lista:
+Herramientas extractoras AM BOM (9 herramientas)
+Herramientas para convertir archivos PDF individuales en BOM estructurados:
+Canal de procesamiento de PDF: pdf_da_metadata_toc, test_solution_clean_markdown, test_solution_structured_extraction, consolidate_test_solution_structured
+Oleoducto de generación de BOM: solution_extractor, bom_extraction_tool, bom_consolidation, dict_to_xlsx
+Razonamiento: think_tool (compartido entre agentes)
+Herramientas de construcción BD BOM (7 herramientas)
+Herramientas para procesamiento masivo y gestión de bases de datos:
+Fase 1 - Descubrimiento: scan_pdf_folder, check_processed_methods, filter_new_methods
+Fase 2 - Procesamiento: process_single_method
+Fase 3 – Consolidación: consolidate_to_database, rebuild_database_from_methods, query_database_status
+Herramientas analíticas del planificador BOM (4 herramientas)
+Herramientas para la planificación y presentación de informes de materiales:
+query_bd_insumos_status, register_product_schedule, calculate_insumos_totals, generate_planner_excel
+Fuentes: src/herramientas/__init__.py1-54src/tools/bd_bom_tools.py259-342
+
+Estructuras de datos clave
+El sistema utiliza tres mecanismos principales de almacenamiento de datos:
+Sistema de archivos virtual: Estado en memoria administrado a través de DeepAgentState.files diccionario con claves tipo ruta (por ejemplo, /actual_method/method_metadata_TOC.json, /bom/bom_consolidated.json)
+Archivos de métodos físicos: Archivos BOM de métodos individuales almacenados en src/bases de datos/bom/métodos/con patrón de nombres {numero_metodo}_V{version}.json
+Base de datos central: Base de datos consolidada en src/bases de datos/bom/BD_INSUMOS.jsonque contiene:
+resumen_metodos: Resumen de todos los métodos procesados
+insumos: Lista desnormalizada de materiales ampliada por ámbito de producto
+Fuentes: src/tools/bd_bom_tools.py38-61src/tools/bd_bom_tools.py750-763
+Arquitectura de procesamiento paralelo
+El bd_bom_builder_agent implementa procesamiento simultáneo para mejorar el rendimiento:
+
+Diagrama: Patrón de procesamiento paralelo con ThreadPoolExecutor
+El scan_pdf_folder usos de herramientas concurrent.futures.ThreadPoolExecutor con max_workers=5 para escaneo paralelo de PDF src/tools/bd_bom_tools.py387-391 El process_single_method La herramienta se puede invocar simultáneamente, y cada invocación crea una instancia separada de am_bom_extractor_agentsrc/tools/bd_bom_tools.py613-629
+Fuentes: src/tools/bd_bom_tools.py387-441src/tools/bd_bom_tools.py605-816
+Patrón de gestión estatal
+El sistema utiliza un patrón de gestión de estado inmutable a través de LangGraphCommand objetos. Las herramientas nunca mutan directamente el estado; en cambio, regresan Command objetos que especifican actualizaciones de estado:
+# Patternusedthroughoutthe codebasereturn Command(update={        "files": files,  #Updated files dictionary        "messages": [ToolMessage(summary_message, tool_call_id=tool_call_id)],    })
+Este patrón se implementa en todas las herramientas utilizando:
+InjectedStatepara leer el estado actual
+InjectedToolCallIdpara seguimiento de mensajes
+Commandpara actualizaciones de estado inmutables
+ToolMessagepara informes de progreso legibles por humanos
+Fuentes: src/tools/bd_bom_tools.py8-15src/tools/bd_bom_tools.py436-441
+Toma de huellas dactilares y deduplicación
+El sistema utiliza una estrategia de toma de huellas dactilares normalizada para rastrear y deduplicar métodos en todas las ejecuciones de procesamiento. El normalize_fingerprint() función src/tools/bd_bom_tools.py101-118estandariza los identificadores de métodos:
+Normaliza espacios y guiones (por ejemplo, "01 - 4906" → "01-4906")
+Se convierte a mayúsculas para coincidencias que no distinguen entre mayúsculas y minúsculas
+Combina numero_metodo y version_metodo en huellas dactilares como "01-4906_V00"
+El sistema utiliza una estrategia de emparejamiento de dos niveles src/tools/bd_bom_tools.py568-573:
+Coincidencia exacta de huellas dactilares (numero_metodo + version)
+Retroceder a numero_metodo-solo coincidencia (para métodos sin versiones explícitas)
+Fuentes: src/tools/bd_bom_tools.py101-118src/tools/bd_bom_tools.py399-401src/tools/bd_bom_tools.py561-583
+Arquitectura
+Propósito y alcance
+Este documento explica la arquitectura de alto nivel del sistema am_bom_extractor, incluido el patrón de diseño de tres agentes, la integración del marco LangGraph y los mecanismos de comunicación entre agentes. Cubre la organización estructural de agentes, subagentes y herramientas, así como los patrones de gestión estatal que permiten flujos de trabajo complejos.
+Para obtener detalles sobre el flujo de datos y los patrones de almacenamiento, consulte Flujo y almacenamiento de datos. Para obtener detalles sobre los agentes individuales y sus flujos de trabajo, consulte agente_extractor_am_bom, agente_constructor_bd_bom, y planificador_bom_analítico. Para obtener detalles sobre la implementación de la herramienta, consulte Sistema de herramientas.
+
+Descripción general del sistema de tres agentes
+El sistema está compuesto por tres agentes LangGraph independientes, cada uno registrado en langgraph.json4-8 bajo el graphs clave:
+Nombre del agente
+Módulo gráfico
+Responsabilidad primaria
+am_bom_extractor_agent
+src/graph/builder.py:am_bom_extractor_agent
+Extracción de BOM con un solo PDF
+bd_bom_builder_agent
+src/graph/bd_bom_builder.py:bd_bom_builder_agent
+Gestión de bases de datos y procesamiento por lotes
+analytical_bom_planner
+src/graph/analytical_planner.py:analytical_bom_planner
+Planificación de materiales y análisis de horarios
+
+ada agente opera de forma independiente pero comparte patrones arquitectónicos comunes. Los tres utilizan el marco DeepAgents (vía create_deep_agent) y comunicarse a través de un sistema de archivos virtual compartido integrado en DeepAgentState.
+Diagrama: Sistema de tres agentes con referencias de código
+Esta arquitectura impone la separación de preocupaciones: am_bom_extractor_agent maneja el análisis de documentos, bd_bom_builder_agent gestiona el ciclo de vida de la base de datos y analytical_bom_planner consume la base de datos consolidada para planificar flujos de trabajo. La invocación entre agentes solo está permitida en un caso: bd_bom_processor_subagent puede invocar am_bom_extractor_agent para procesar archivos PDF individuales dentro de una operación por lotes.
+Fuentes:langgraph.json1-10src/graph/builder.py1-21src/graph/bd_bom_builder.py1-57src/herramientas/__init__.py1-55
+
+Integración del marco LangGraph
+Todos los agentes se crean utilizando el create_deep_agent función de la biblioteca DeepAgents, que envuelve las primitivas de ejecución y gestión de estado de LangGraph. El patrón de creación es idéntico en los tres agentes:
+
+Diagrama: Patrón de creación de agentes LangGraph
+Ejemplos de creación de agentes
+agente_extractor_am_bom (src/graph/builder.py16-20):
+am_bom_extractor_agent = create_deep_agent(system_prompt=INSTRUCTIONS_SUPERVISOR,subagents=sub_agents,  # [structured_extraction_subagent, bom_extraction_subagent]model=llm_model        # openai:gpt-5-mini)
+agente_constructor_bd_bom (src/graph/bd_bom_builder.py52-56):
+bd_bom_builder_agent = create_deep_agent(system_prompt=BD_BOM_BUILDER_SUPERVISOR_INSTRUCTIONS,subagents=sub_agents,  # [bd_bom_scanner_subagent, bd_bom_processor_subagent]model=llm_model)
+Ambos agentes utilizan openai:gpt-5-mini como backend de LLM (src/graph/builder.py8src/graph/bd_bom_builder.py41). El modelo se inicializa mediante init_chat_model de LangChain y es responsable de la selección de herramientas, las decisiones de delegación y la generación de respuestas.
+Patrón de actualización de estado mediante comando
+Las herramientas no mutan directamente el estado. En cambio, regresan Command objetos que indican al entorno de ejecución de LangGraph cómo actualizar el estado:
+
+Diagrama: invocación de herramientas y flujo de actualización de estado
+Este patrón de actualización indirecta garantiza la coherencia del estado y permite funciones como la reversión de transacciones y el seguimiento del historial de estados.
+Fuentes:src/prompts/sub_agent_prompts.py1-118(referencias a rutas virtuales), src/herramientas/__init__.py1-55(implementaciones de herramientas que utilizan el estado)
+
+Arquitectura de delegaciones y subagentes
+Los tres agentes principales siguen el patrón de delegación de supervisores: el agente de nivel superior (supervisor) no tiene herramientas específicas del dominio, sino que delega el trabajo a subagentes especializados.
+Responsabilidades del supervisor
+El agente supervisor utiliza únicamente herramientas DeepAgents integradas:
+write_todos: Crear lista de tareas para la planificación del flujo de trabajo
+task: Delegar trabajo a un subagente
+ls: Enumere archivos en un sistema de archivos virtual
+read_file: Leer contenido de archivos virtuales
+grep: Buscar contenido de archivos virtuales
+El supervisor nunca invoca directamente herramientas específicas del dominio como pdf_da_metadata_toc o bom_extraction_tool. Esta separación impone la orquestación del flujo de trabajo a nivel de supervisor y la ejecución a nivel de subagente.
+Delegación de agente_extractor_am_bom
+Diagrama: Estructura de delegación de am_bom_extractor_agent
+El supervisor recibe una ruta PDF, delega a STRUCTURED_EXTRACTION_AGENT para convertirlo a JSON estructurado, luego delega a BOM_EXTRACTION_AGENT para extraer materiales. Cada subagente tiene acceso exclusivo a su conjunto de herramientas.
+Fuentes:src/graph/builder.py11-20src/prompts/sub_agent_prompts.py1-118src/agents/sub_agents_config.py
+Delegación del agente bd_bom_builder
+Diagrama: Delegación trifásica de bd_bom_builder_agent
+El bd_bom_builder_agent implementa un sofisticado flujo de trabajo trifásico donde el supervisor aplica la secuenciación de fases y al mismo tiempo permite el paralelismo dentro de la Fase 2. Hasta 5 bd_bom_processor_subagent Las instancias pueden ejecutarse simultáneamente, cada una procesando un PDF diferente invocando am_bom_extractor_agent.
+Fuentes:src/graph/bd_bom_builder.py1-57src/agents/bd_bom_builder_config.py33-36src/prompts/bd_bom_builder_prompts.py
+Flujo y almacenamiento de datos
+Propósito y alcance
+Este documento explica cómo fluyen los datos a través del sistema am_bom_extractor, desde los PDF de entrada hasta la consolidación final de la base de datos. Cubre la arquitectura de almacenamiento dual: el sistema de archivos virtual (state['files']) para datos intermedios transitorios y archivos físicos (JSON y Excel) para almacenamiento persistente. Para obtener información sobre la arquitectura del sistema de tres agentes que procesa estos datos, consulte Arquitectura. Para flujos de trabajo de agentes específicos, consulte agente_extractor_am_bom, agente_constructor_bd_bom, y planificador_bom_analítico.
+
+Arquitectura de almacenamiento de datos
+El sistema emplea un estrategia de almacenamiento de dos niveles para equilibrar el rendimiento, la capacidad de reanudación y la persistencia de los datos.
+Diagrama: Arquitectura de almacenamiento de dos niveles
+Fuentes:
+src/tools/bd_bom_tools.py:42-60
+src/prompts/sub_agent_prompts.py:1-117
+Sistema de archivos virtual (estado['archivos'])
+El sistema de archivos virtual reside en state['files'], un diccionario administrado por LangGraph'sDeepAgentState. Se almacena datos intermedios transitorios esto no requiere persistencia entre sesiones, pero permite la coordinación de agentes y el procesamiento paralelo.
+Estructura de ruta virtual
+Ruta virtual
+Propósito
+Agente
+Tipo de datos
+/actual_method/method_metadata_TOC.json
+Metadatos del método y tabla de contenidos
+extractor de am_bom_
+MetodoAnaliticoCompleto
+/actual_method/test_solution_markdown.json
+Segmentos de rebaja de prueba/solución
+extractor de am_bom_
+Listados de pruebas con Markdown
+/actual_method/test_solution_structured/{id}.json
+Pruebas estructuradas individuales (paralelas)
+extractor de am_bom_
+TestSolutionspor prueba
+/actual_method/test_solution_structured_content.json
+Pruebas estructuradas consolidadas
+extractor de am_bom_
+Matriz de TestSolutions
+/bom/solutions.json
+Soluciones extraídas con contexto
+extractor de am_bom_
+Matriz de soluciones
+/bom/insumos_extracted/{index}.json
+Insumos extraídos por solución (paralelo)
+extractor de am_bom_
+Insumos por solución
+/bom/bom_consolidated.json
+BOM consolidado
+extractor de am_bom_
+Insumos agregados
+/bd_builder/scanned_pdfs.json
+Resultados del escaneo de PDF
+bd_bom_builder
+Matriz de metadatos PDF
+/bd_builder/processed_methods.json
+Huellas dactilares del método procesado
+bd_bom_builder
+Huellas dactilares de la base de datos
+/bd_builder/filtered_methods.json
+Nuevos métodos para procesar
+bd_bom_builder
+PDF filtrados
+/bd_builder/processing_results.json
+Estado de procesamiento
+bd_bom_builder
+Matriz de resultados
+/render/*.xlsx
+Metadatos de exportación de Excel
+extractor de am_bom_
+Exportar información
+
+Fuentes:
+src/tools/bd_bom_tools.py:56-60
+src/prompts/sub_agent_prompts.py:1-117
+src/tools/bom_consolidation.py:18-19
+Estructura de entrada de archivos virtuales
+Cada entrada en state['files'] sigue una estructura estandarizada:
+state['files'][path] = {    "content": content_str.split("\n"),  #Listof lines    "data": data_object,                  # Parsed Python object    "modified_at": datetime.now().isoformat()  # ISO timestamp}
+El data el campo contiene el objeto Python analizado (dict/list), mientras que content almacena el JSON serializado como una lista de cadenas. El modified_at Se requiere una marca de tiempo para la compatibilidad con las operaciones globales de deepagents.
+Fuentes:
+src/tools/bd_bom_tools.py:219-227
+Operaciones de almacenamiento
+Dos funciones auxiliares gestionan las operaciones del sistema de archivos virtual:
+def _save_to_state_files(files: Dict, path: str, data: Any) -> Nonedef _load_from_state_files(files: Dict, path: str) -> Optional[Any]
+Estas funciones abstraen la lógica de serialización/deserialización y proporcionan una interfaz consistente para que las herramientas interactúen con el sistema de archivos virtual.
+Fuentes:
+src/tools/bd_bom_tools.py:219-253
+Patrones de flujo de datos
+Patrón 1: Flujo de extracción de PDF único
+Diagrama: Flujo único de datos PDF
+Este patrón procesa un PDF a la vez y almacena todos los resultados intermedios en el sistema de archivos virtual. Sólo la lista de materiales consolidada final se escribe en el almacenamiento físico.
+Fuentes:
+src/prompts/sub_agent_prompts.py:1-117
+src/tools/bd_bom_tools.py:605-815
+Patrón 2: Flujo de procesamiento por lotes
+Diagrama: Flujo de datos de procesamiento por lotes
+Este patrón escanea una carpeta, filtra métodos ya procesados, procesa nuevos métodos en paralelo y consolida todos los resultados en la base de datos maestra.
+Fuentes:
+src/tools/bd_bom_tools.py:349-960
+
+Canal de transformación de datos
+El siguiente diagrama muestra cómo se transforman los datos de PDF sin procesar a base de datos consolidada:
+
+Diagrama: Canal de transformación de datos
+Cada etapa produce datos cada vez más estructurados, desde PDF no estructurados hasta registros BOM normalizados.
+Fuentes:
+src/prompts/sub_agent_prompts.py:1-117
+src/tools/bom_consolidation.py:1-352
+
+Lógica de consolidación de BOM
+El proceso de consolidación de BOM aplica una lógica empresarial crítica para garantizar requisitos de materiales precisos:
+Normalización unitaria
+Todas las cantidades se normalizan a unidades base antes de la agregación:
+Peso: mg (unidad base)
+Volumen:mL (unidad base)
+Unitatea: UND (sin conversión)
+WEIGHT_CONVERSIONS = {    "kg": 1_000_000,  # kg to mg    "g": 1_000,       # g to mg    "mg": 1,          # mg (base)    "µg": 0.001,      # µg to mg}VOLUME_CONVERSIONS = {    "L": 1_000,       # L to mL    "mL": 1,          # mL (base)    "µL": 0.001,      # µL to mL}
+Fuentes:
+src/tools/bom_consolidation.py:71-111
+Deduplicación del insumo cromatográfico
+Las columnas cromatográficas y los disolventes de fase móvil son deduplicado por prueba porque se extraen de condiciones_cromatograficas y aparecen una vez por prueba, no por solución.
+Lógica de detección:
+Tipo Insumo
+Criterios de detección
+Estrategia de deduplicación
+Columna
+Contiene ("c18" O "c8" O "columna") Y ("mm" O "μm")
+Uno por (PRUEBA, ANÁLISIS)
+Disolvente de fase móvil
+El nombre contiene ("acetonitrilo", "metanol", etc.) Y cantidad == 1000 mL
+Uno por (PRUEBA, ANÁLISIS)
+Filtros
+Contiene "filtro"
+NO cromatográfico - no deduplicar
+Reactivos regulares
+Todos los demás
+Agregar todas las ocurrencias
+Fuentes:
+src/tools/bom_consolidation.py:133-167, 202-232
+Agregación por nombre Insumo
+Después de la deduplicación, los insumos se agregan mediante {INSUMO}|{UNIDAD} clave:
+aggregated[key] = {    "INSUMO": nombre,    "CANTIDAD_TOTAL": sum_of_normalized_quantities,    "UNIDAD": normalized_unit,    "ocurrencias": count_of_occurrences}
+Fuentes:
+src/tools/bom_consolidation.py:235-262
+Toma de huellas dactilares y deduplicación
+El sistema utiliza huellas dactilares para evitar el procesamiento de métodos duplicados:
+Generación de huellas dactilares
+defnormalize_fingerprint(value: str) -> str:    """Normalizesspaces, hyphens, and convertstouppercase."""normalized = " ".join(value.split()).upper()normalized = normalized.replace(" - ", "-").replace("- ", "-").replace(" -", "-")normalized = re.sub(r'\s*-\s*', '-', normalized)return normalized# Example: "01 - 4906" -> "01-4906"#          "USGP-0522" -> "USGP-0522"fingerprint = f"{numero_norm}_V{version_norm}" ifversion_normelse numero_norm# Example: "USGP-0522_V00", "01-4108_V01"
+Fuentes:
+src/tools/bd_bom_tools.py:101-118
+Estrategia de deduplicación
+El consolidate_to_database La herramienta implementa un enfoque de dos estrategias:
+Estrategia 1: Utilice los resultados del procesamiento de state['files']['/bd_builder/processing_results.json'] si está disponible.
+Estrategia 2: Escanear methods/ directorio para archivos JSON que no están presentes en los existentes BD_INSUMOS.json huellas dactilares.
+Esto garantiza que tanto las actualizaciones incrementales (del procesamiento por lotes) como los escenarios de recuperación (reconstrucción desde métodos/carpeta) funcionen correctamente.
+Fuentes:
+src/tools/bd_bom_tools.py:849-932
+
+Patrones de limpieza estatal
+Las herramientas siguen estos patrones de limpieza:
+Archivos de Fan-Out (procesamiento paralelo)
+Después de la consolidación, se eliminan los archivos de procesamiento paralelo individuales:
+forconsumed_path in consumed_paths:ifconsumed_path != BOM_CONSOLIDATED:files.pop(consumed_path, None)
+Esto mantiene el estado limpio al eliminarlo /bom/insumos_extracted/{index}.json después de consolidarse a /bom/bom_consolidated.json.
+Fuentes:
+src/tools/bom_consolidation.py:336-338
+Resultados del procesamiento por lotes
+Después de la consolidación de la base de datos, se borran los resultados del procesamiento por lotes:
+if VFILES_PROCESSING_RESULTS in files:files.pop(VFILES_PROCESSING_RESULTS, None)
+Esto evita que los mismos resultados se consoliden dos veces.
+Fuentes:
+src/tools/bd_bom_tools.py:946-947
+Archivos de salida
+Informes de Excel
+Los archivos Excel se generan a partir de datos de BOM utilizando el dict_to_xlsx herramienta. Existen dos tipos de exportaciones:
+Tipo de exportación
+Fuente
+Ruta de salida
+Propósito
+Específico de BOM
+/bom/bom_consolidated.json
+/render/BOM_{timestamp}.xlsx
+Listado detallado de insumo
+Genérico
+Cualquier JSON en estado
+/render/{name}_{timestamp}.xlsx
+Exportación general de datos
+La herramienta formatea datos BOM con encabezados de columna: PRODUCTO, MATERIAL, TIPO, PRUEBA, TIPO_DE_ANALISIS, ANÁLISIS, CARACTERISTICA_EQUIPO, EQUIPO, SOLUCIÓN, INSUMO, CANTIDAD, UNIDAD.
+Fuentes:
+src/prompts/tool_description_prompts.py:198-237
+
+Patrones de recuperación de datos
+El sistema proporciona múltiples formas de acceder a los datos almacenados:
+Desde el sistema de archivos virtual
+# Load fromstateusinghelper functiondata = _load_from_state_files(files, "/bom/bom_consolidated.json")# Direct access (toolsmusthandledeserialization)file_entry = state['files'][path]data = file_entry.get("data") orjson.loads(file_entry.get("content"))
+Fuentes:
+src/tools/bd_bom_tools.py:229-253
+Del almacenamiento físico
+# Read individual methodwith open(METHODS_DIR / "USGP-0522_V00.json", "r", encoding="utf-8") as f:method_data = json.load(f)# Readmaster databasewith open(BD_INSUMOS_PATH, "r", encoding="utf-8") as f:db_data = json.load(f)
+Fuentes:
+src/tools/bd_bom_tools.py:473-515, 876-898
+Consulta por huella dactilar
+# Checkifmethodalready processedprocessed_data = _load_from_state_files(files, VFILES_PROCESSED_METHODS)processed_fingerprints = processed_data.get("processed_fingerprints", {})numero_norm = normalize_fingerprint(numero_metodo)version_norm = version_metodo.strip().upper()fingerprint = f"{numero_norm}_V{version_norm}"if fingerprint in processed_fingerprints:    # Methodalready processed
+Fuentes:
+src/tools/bd_bom_tools.py:557-591
+
+Resumen
+El sistema am_bom_extractor implementa un arquitectura de almacenamiento dual que separa el estado de procesamiento transitorio de los datos persistentes:
+Sistema de archivos virtual (state['files']): Permite la coordinación de agentes, el procesamiento paralelo y la reanudación sin sobrecarga de E/S de archivos.
+Almacenamiento persistente (methods/, BD_INSUMOS.json): Proporciona la fuente de verdad para los métodos procesados y permite consultas entre sesiones.
+Los datos fluyen cinco etapas de transformación, desde PDF sin procesar hasta base de datos consolidada, con lógica de normalización, deduplicación y agregación aplicada en cada etapa. La toma de huellas dactilares evita el procesamiento duplicado, mientras que los patrones de limpieza mantienen un gráfico de estado limpio.
+Esta arquitectura logra:
+Rendimiento: El sistema de archivos virtual evita la E/S excesiva del disco
+Reanudabilidad: Estado intermedio conservado para la recuperación del flujo de trabajo
+Escalabilidad: Procesamiento paralelo habilitado por entradas de archivos independientes
+Integración: La base de datos maestra sirve como única fuente de verdad para los agentes posteriores
+
+
+
