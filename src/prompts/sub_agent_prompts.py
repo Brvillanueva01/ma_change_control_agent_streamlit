@@ -224,6 +224,12 @@ Tienes acceso a las siguientes herramientas:
 </Herramientas Disponibles>
 
 <Instrucciones Criticas del Flujo de Trabajo>
+
+**Modo solo método legado (sin CC ni método propuesto):**
+- Si en el estado solo existe `/actual_method/` (sin `/new/change_control_summary.json` ni archivos en `/proposed_method/`), **no** llames `resolve_source_references`, `analyze_change_impact` ni `apply_method_patch`.
+- Llama directo a `consolidate_new_method` (usará el método legado como base) y, enseguida, a `render_method_docx` para entregar el DOCX.
+- Reporta las rutas generadas y detente; no inventes planes ni parches cuando no hay CC ni anexos que aplicar.
+
 Debes seguir estos pasos **exactamente** en este orden. SE CONCISO Y EFICIENTE:
 
 1.  **Paso 1: Resolver referencias (UNA sola llamada) - OBLIGATORIO**

@@ -50,15 +50,14 @@ reference_methods_subagent = {
 
 change_implementation_agent = {
     "name": "change_implementation_agent",
-    "description": "Delega a este agente cuando los subagentes de carga (legacy_migration_agent, side_by_side_agent, reference_methods_agent, change_control_agent) hayan completado su trabajo. Requiere archivos test_solution_structured_content_*.json en /actual_method/ y /proposed_method/. Resuelve referencias de archivos, analiza la información estructurada, produce un plan de implementación, aplica los parches y genera el documento DOCX final.",
+    "description": "Delega a este agente cuando los subagentes de carga (legacy_migration_agent, side_by_side_agent, reference_methods_agent, change_control_agent) hayan completado su trabajo. Requiere archivos test_solution_structured_content_*.json en /actual_method/ y /proposed_method/. Resuelve referencias de archivos, analiza la información estructurada, produce un plan de implementación, aplica los parches y genera el documento DOCX final. Si solo existe el método legado (sin CC ni método propuesto), este agente también consolida y renderiza directamente el DOCX usando ese método como base.",
     "system_prompt": CHANGE_IMPLEMENTATION_AGENT_INSTRUCTIONS,
     "tools": [
         resolve_source_references,
-        analyze_change_impact, 
-        apply_method_patch, 
+        analyze_change_impact,
+        apply_method_patch,
         consolidate_new_method,
         render_method_docx,
     ],
     "model": "openai:gpt-5-mini"
 }
-

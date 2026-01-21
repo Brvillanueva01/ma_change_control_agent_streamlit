@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import unicodedata
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
@@ -49,30 +50,69 @@ def _clean_text(text: str) -> str:
 
 
 def _latex_to_text_general(text: str) -> str:
-    """Convierte expresiones LaTeX simples a texto plano legible en Word."""
+    """
+    Convierte LaTeX a texto matematico compatible con Word (texto plano).
+    Normaliza fracciones, elimina delimitadores y reemplaza simbolos comunes
+    para reducir riesgos de caracteres ilegales en el DOCX.
+    """
     if not isinstance(text, str):
         return text
-    out = text
+
+    out = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Fracciones anidadas: \frac{a}{b} -> (a/b)
     frac_pattern = re.compile(r"\\frac\{([^{}]+)\}\{([^{}]+)\}")
     while frac_pattern.search(out):
         out = frac_pattern.sub(r"(\1/\2)", out)
+
+    # Eliminar delimitadores y comandos de formato sin contenido
+    out = re.sub(r"\\left|\\right", "", out)
+    out = re.sub(r"\\[()]", "", out)
+    out = out.replace("$", "")
+    out = re.sub(r"\\mathrm\{\s*~?([^}]+)\s*\}", r"\1", out)
+    out = re.sub(r"\\text\{\s*([^}]+)\s*\}", r"\1", out)
+
     replacements = [
-        (r"\$", ""),
-        (r"\\mu", "u"),
-        (r"\\mathrm\{\s*~?([^}]+)\s*\}", r"\1"),
         (r"\\%", "%"),
-        (r"\\times", "x"),
-        (r"\^\{\\circ\}", " deg"),
+        (r"\\times", "\u00d7"),
+        (r"\\cdot", "\u00b7"),
+        (r"\\pm", "\u00b1"),
+        (r"\\mu", "\u00b5"),
+        (r"\\alpha", "\u03b1"),
+        (r"\\beta", "\u03b2"),
+        (r"\\gamma", "\u03b3"),
+        (r"\\deg(re(e)?|)ree?", "\u00b0"),
+        (r"\^\{\\circ\}", "\u00b0"),
         (r"\^\{([^}]+)\}", r"^\1"),
     ]
     for pattern, repl in replacements:
         out = re.sub(pattern, repl, out)
+
+    # Normalizacion basica
     out = re.sub(r"\s+", " ", out).strip()
     out = re.sub(r"\(\s+", "(", out)
     out = re.sub(r"\s+\)", ")", out)
     out = re.sub(r"\s*/\s*", "/", out)
     out = re.sub(r"(\d)\s+%", r"\1%", out)
+
+    # Normalizacion matematica general
+    out = re.sub(r"\u00b5\s+g", "\u00b5g", out)
+    out = re.sub(r"m\s+g", "mg", out)
+    out = re.sub(r"n\s+g", "ng", out)
+    out = re.sub(r"m\s+L", "mL", out)
+    out = re.sub(r"\s*\u00d7\s*", "\u00d7", out)
     return out
+
+
+def _deep_latex_cleanup(obj: Any) -> Any:
+    """Limpieza recursiva: aplica _latex_to_text_general a todos los strings."""
+    if isinstance(obj, str):
+        return _latex_to_text_general(obj)
+    if isinstance(obj, list):
+        return [_deep_latex_cleanup(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _deep_latex_cleanup(v) for k, v in obj.items()}
+    return obj
 
 
 def _normalize_str(value: Any) -> str:
@@ -180,16 +220,16 @@ def _normalize_prueba(prueba: Dict[str, Any]) -> Dict[str, Any]:
 def _build_method_context(method_data: Dict[str, Any]) -> Dict[str, Any]:
     """Arma el contexto para docxtpl a partir del nodo data del JSON."""
     context: Dict[str, Any] = {}
-    
+
     for field in ["tipo_metodo", "nombre_producto", "numero_metodo", "version_metodo", "codigo_producto", "objetivo"]:
         context[field] = _normalize_str(method_data.get(field))
-    
+
     alcance = method_data.get("alcance_metodo") or {}
     context["alcance_metodo"] = {
         "texto_alcance": _normalize_str(alcance.get("texto_alcance")),
         "lista_productos_alcance": _sanitize(_as_list(alcance.get("lista_productos_alcance"))),
     }
-    
+
     context["definiciones"] = _sanitize(_as_list(method_data.get("definiciones")))
     context["recomendaciones_seguridad"] = _sanitize(_as_list(method_data.get("recomendaciones_seguridad")))
     context["materiales"] = _sanitize(_as_list(method_data.get("materiales")))
@@ -198,10 +238,10 @@ def _build_method_context(method_data: Dict[str, Any]) -> Dict[str, Any]:
     context["autorizaciones"] = _sanitize(_as_list(method_data.get("autorizaciones")))
     context["documentos_soporte"] = _sanitize(_as_list(method_data.get("documentos_soporte")))
     context["historico_cambios"] = _sanitize(_as_list(method_data.get("historico_cambios")))
-    
+
     pruebas_raw = method_data.get("pruebas") or []
     context["pruebas"] = [_normalize_prueba(prueba) for prueba in pruebas_raw if isinstance(prueba, dict)]
-    
+
     # Fallback: agregar 'prueba' vacia para referencias fuera del loop en la plantilla
     context["prueba"] = {
         "section_id": "",
@@ -218,7 +258,7 @@ def _build_method_context(method_data: Dict[str, Any]) -> Dict[str, Any]:
         "reactivos": [],
         "referencias": [],
     }
-    
+
     return context
 
 
@@ -249,6 +289,17 @@ def _load_json_payload(files: dict[str, Any], path: str) -> Optional[dict[str, A
     return None
 
 
+def _validate_docx(path: Path) -> None:
+    """Valida rapidamente que el DOCX generado no este corrupto (zip legible)."""
+    try:
+        with zipfile.ZipFile(path, "r") as zf:
+            bad = zf.testzip()
+            if bad:
+                raise ValueError(f"Archivo DOCX corrupto: entrada dañada {bad}")
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Archivo DOCX corrupto generado en {path}") from exc
+
+
 def _render_docx_template(
     template_path: Path,
     context: Dict[str, Any],
@@ -259,14 +310,14 @@ def _render_docx_template(
     """Renderiza una plantilla DOCX usando docxtpl/Jinja2."""
     if DocxTemplate is None:
         raise RuntimeError("docxtpl no esta instalado. No es posible renderizar el DOCX.")
-    
+
     tpl_path = Path(template_path)
     if not tpl_path.exists():
         raise FileNotFoundError(f"Plantilla no encontrada: {tpl_path}")
-    
+
     doc = DocxTemplate(str(tpl_path))
     cleaned_context = _sanitize(context)
-    
+
     if UndefinedError is not None:
         try:
             doc.render(cleaned_context)
@@ -275,11 +326,12 @@ def _render_docx_template(
             raise ValueError(f"Faltan variables en el contexto: {missing}") from err
     else:
         doc.render(cleaned_context)
-    
+
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = output_dir / f"{filename_prefix}_{ts}.docx"
     doc.save(str(out_path))
+    _validate_docx(out_path)
     logger.info("Documento generado en: %s", out_path)
     return out_path
 
@@ -296,25 +348,25 @@ def render_method_docx(
     Renderiza el metodo analitico consolidado en un documento DOCX usando la plantilla.
     """
     logger.info("Iniciando 'render_method_docx'")
-    
+
     source_files = dict(state.get("files", {}) or {})
-    
+
     # Cargar el metodo desde el filesystem virtual
     method_data = _load_json_payload(source_files, method_path)
     if method_data is None:
         msg = f"No se encontro el metodo en {method_path}. Asegurate de ejecutar consolidate_new_method primero."
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
-    
+
     # Resolver rutas de plantilla y salida
     tpl_path = Path(template_path) if template_path else TEMPLATE_DEFAULT_PATH
     out_dir = Path(output_dir) if output_dir else OUTPUT_DEFAULT_DIR
-    
+
     if not tpl_path.exists():
         msg = f"Plantilla no encontrada: {tpl_path}"
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
-    
+
     # Construir contexto para la plantilla
     try:
         context = _build_method_context(method_data)
@@ -322,7 +374,7 @@ def render_method_docx(
         msg = f"Error construyendo contexto para la plantilla: {e}"
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
-    
+
     # Renderizar el documento
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -337,7 +389,7 @@ def render_method_docx(
         msg = f"Error renderizando el documento DOCX: {e}"
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
-    
+
     # Registrar la ruta del documento generado en el filesystem virtual
     docx_info = {
         "path": str(output_path),
@@ -345,19 +397,19 @@ def render_method_docx(
         "source_method": method_path,
         "template_used": str(tpl_path),
     }
-    
+
     files_update = source_files.copy()
     files_update["/new/rendered_docx_info.json"] = {
         "content": json.dumps(docx_info, ensure_ascii=False, indent=2),
         "data": docx_info,
         "modified_at": datetime.now(timezone.utc).isoformat(),
     }
-    
+
     # Extraer info del metodo para el mensaje
     nombre_producto = method_data.get("nombre_producto", "N/A")
     numero_metodo = method_data.get("numero_metodo", "N/A")
     num_pruebas = len(method_data.get("pruebas", []))
-    
+
     tool_message = (
         f"Documento DOCX generado exitosamente.\n"
         f"- Producto: {nombre_producto}\n"
@@ -366,7 +418,7 @@ def render_method_docx(
         f"- Archivo: {output_path}"
     )
     logger.info(tool_message)
-    
+
     return Command(
         update={
             "files": files_update,

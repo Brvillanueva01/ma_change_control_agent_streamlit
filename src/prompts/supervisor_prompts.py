@@ -1,4 +1,4 @@
-DEEP_AGENT_INSTRUCTIONS = """
+﻿DEEP_AGENT_INSTRUCTIONS = """
 ## `write_todos`
 
 Tienes acceso a la herramienta `write_todos` para ayudarte a gestionar y planificar objetivos complejos.
@@ -90,7 +90,8 @@ Inmediatamente después de la solicitud del usuario, **analiza los archivos prop
 **Ejemplo 1: El usuario solo da el método legado.**
 ```json
 [
-  {{ "content": "Paso 1: Migrar Método Legado (Completo)", "status": "in_progress" }}
+  { "content": "Paso 1: Migrar Método Legado (Completo)", "status": "in_progress" },
+  { "content": "Paso 2: Renderizar Método Legado", "status": "pending" }
 ]
 ```
 
@@ -98,9 +99,9 @@ Inmediatamente después de la solicitud del usuario, **analiza los archivos prop
 
 ```json
 [
-  {{ "content": "Paso 1: Migrar Método Legado", "status": "in_progress" }},
-  {{ "content": "Paso 2: Analizar Control de Cambios", "status": "pending" }}
-  // (Faltarían los pasos de consolidación/edición)
+  { "content": "Paso 1: Migrar Método Legado", "status": "in_progress" },
+  { "content": "Paso 2: Analizar Control de Cambios", "status": "pending" }
+  // (Faltarán los pasos de consolidación/edición/render)
 ]
 ```
 
@@ -108,10 +109,10 @@ Inmediatamente después de la solicitud del usuario, **analiza los archivos prop
 
 ```json
 [
-  {{ "content": "Paso 1: Migrar Método Legado", "status": "in_progress" }},
-  {{ "content": "Paso 2: Analizar Control de Cambios", "status": "pending" }},
-  {{ "content": "Paso 3: Analizar Comparativo Side-by-Side", "status": "pending" }}
-  // (Faltarían los pasos de consolidación/edición)
+  { "content": "Paso 1: Migrar Método Legado", "status": "in_progress" },
+  { "content": "Paso 2: Analizar Control de Cambios", "status": "pending" },
+  { "content": "Paso 3: Analizar Comparativo Side-by-Side", "status": "pending" }
+  // (Faltarán los pasos de consolidación/edición/render)
 ]
 ```
 
@@ -126,6 +127,7 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
   * **Agente a Llamar:** `subagent_type="legacy_migration_agent"`
   * **Descripción de la Tarea:** Pásale la ruta del archivo que te dio el usuario. El subagente se encargará *internamente* de todo su flujo (Extraer, Fan-Out, Fan-In, Consolidar), tal como lo define *su propio prompt*.
   * **Paralelo:** Si también hay CC y/o Side-by-Side, lanza sus `task` correspondientes en el mismo turno para ejecutarlas en paralelo.
+  * **Si es el único insumo:** Cuando no exista CC ni side-by-side ni métodos de referencia, marca este TODO como completado y crea/avanza un TODO `Renderizar Método Legado` para ejecutar `change_implementation_agent` en el siguiente turno.
   * **Ejemplo de llamada `task`**:
     ```json
     {{
@@ -136,7 +138,7 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
       }}
     }}
     ```
-  * **Al Terminar:** El subagente te devolverá un `ToolMessage` con la ruta al archivo final (ej. `/new/new_method_final.json`). Usa `think_tool` para verificarlo y luego `write_todos` para avanzar al siguiente paso.
+  * **Al Terminar:** El subagente te devolverá un `ToolMessage` con la ruta al archivo final (ej. `/actual_method/test_solution_structured_content_*.json`). Usa `think_tool` para verificarlo y luego `write_todos` para avanzar al siguiente paso.
 
 -----
 
@@ -193,6 +195,25 @@ Usa un ciclo de `read_todos` -\> `task` -\> `think_tool` -\> `write_todos`. Sigu
 
 -----
 
+**CUANDO el TODO `in_progress` contiene "Renderizar Método Legado":**
+
+  * **Prerequisito:** Debes tener `/actual_method/test_solution_structured_content_*.json` listo. No se requiere CC ni método propuesto.
+  * **Agente a Llamar:** `subagent_type="change_implementation_agent"`
+  * **Descripción de la Tarea:** Indica que solo hay método legado y que debe consolidar y renderizar (usar `consolidate_new_method` y luego `render_method_docx`, sin ejecutar `resolve_source_references`, `analyze_change_impact` ni `apply_method_patch`).
+  * **Ejemplo de llamada `task`**:
+    ```json
+    {{
+      "name": "task",
+      "args": {{
+        "description": "Solo hay método legado. Consolida el método y genera el DOCX final.",
+        "subagent_type": "change_implementation_agent"
+      }}
+    }}
+    ```
+  * **Al Terminar:** El subagente debe devolver la ruta del DOCX y el JSON consolidado. Marca el TODO como completado.
+
+-----
+
 **CUANDO el TODO `in_progress` contiene "Implementar Cambios en el Metodo Nuevo":**
 
   * **Prerequisito:** Asegurate de que ya existan `/new/new_method_final.json`, `/new/change_control.json` y cualquier archivo adicional relevante (`/new/side_by_side.json`, `/new/reference_methods.json`, `/legacy/legacy_method.json`). Si falta alguno, vuelve a los pasos anteriores para completarlos.
@@ -222,3 +243,10 @@ INSTRUCTIONS_SUPERVISOR = (
 + DEEP_AGENT_INSTRUCTIONS
 + "\\n\\n"
 )
+
+
+
+
+
+
+

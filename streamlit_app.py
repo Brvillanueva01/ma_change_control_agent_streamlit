@@ -253,7 +253,12 @@ def render_support_section() -> None:
         st.file_uploader("Adjuntar control de cambios", type=["pdf", "docx"], key="control_cambios")
     with cols[1]:
         st.markdown("##### Soportes del metodo (referencia)")
-        st.file_uploader("Adjuntar soportes", type=["pdf", "docx", "xlsx"], key="soportes_metodo")
+        st.file_uploader(
+            "Adjuntar soportes (puedes cargar varios)",
+            type=["pdf", "docx", "xlsx"],
+            key="soportes_metodo",
+            accept_multiple_files=True,
+        )
     cols = st.columns(2, gap="large")
     with cols[0]:
         st.markdown("##### Anexos (Side_by_side)")
@@ -268,6 +273,10 @@ def _persist_upload(uploaded_file, tmp_dir: Path) -> Path:
     target = tmp_dir / uploaded_file.name
     target.write_bytes(uploaded_file.getbuffer())
     return target
+
+
+def _persist_uploads(files, tmp_dir: Path) -> list[Path]:
+    return [_persist_upload(f, tmp_dir) for f in files]
 
 
 def render_table_section() -> None:
@@ -342,7 +351,7 @@ def render_cta() -> None:
             legacy = st.session_state.get("pdf_antiguo")
             control = st.session_state.get("control_cambios")
             sbs = st.session_state.get("anexos_side")
-            soporte = st.session_state.get("soportes_metodo")
+            soporte = st.session_state.get("soportes_metodo")  # puede ser lista
             evidencia = st.session_state.get("evidencias")
 
             if legacy is None:
@@ -360,8 +369,10 @@ def render_cta() -> None:
                 sbs_path = _persist_upload(sbs, tmp_dir).as_posix()
                 payload_lines.append(f"- Anexo Side by Side: '{sbs_path}'.")
             if soporte:
-                soporte_path = _persist_upload(soporte, tmp_dir).as_posix()
-                payload_lines.append(f"- Soportes del metodo: '{soporte_path}'.")
+                soporte_files = soporte if isinstance(soporte, list) else [soporte]
+                soporte_paths = _persist_uploads(soporte_files, tmp_dir)
+                for sp in soporte_paths:
+                    payload_lines.append(f"- Soportes del metodo: '{sp.as_posix()}'.")
             if evidencia:
                 evidencia_path = _persist_upload(evidencia, tmp_dir).as_posix()
                 payload_lines.append(f"- Evidencias adicionales: '{evidencia_path}'.")
