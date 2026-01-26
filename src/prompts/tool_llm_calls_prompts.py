@@ -19,6 +19,7 @@ Devuelve el resultado en un JSON que cumpla exactamente con este esquema:
 ```
 
 ## Instrucciones clave
+**Idioma:** Copia literalmente los encabezados tal como están en el TOC sin traducirlos. Si el documento está en inglés, todos los campos (`raw`, `title`) deben permanecer en inglés; si está en español, en español.
 1. **Únicamente pruebas principales:** Recorre el TOC de arriba hacia abajo y solo captura aquellas entradas que:
    - Sean explícitamente una prueba analítica (ej. `5.3 UNIFORMIDAD DE UNIDADES DE DOSIFICACIÓN <905> (Variación de peso)`) y estén bajo PROCEDIMIENTO* o DESARROLLO* (o nombres equivalentes), nunca bajo la sección "ESPECIFICACIONES" o equivalentes.
    - Corresponden al **encabezado principal del ensayo** (ej. `7.4 IDENTIFICACION (USP)`). Si un encabezado tiene numeraciones adicionales (p. ej. `7.4.1`, `7.4.2.3`), considera que es un subapartado y **debe ignorarse** aunque mencione una prueba.
