@@ -42,6 +42,8 @@ def _clean_text(text: str) -> str:
         return ""
     if not isinstance(text, str):
         text = str(text)
+    # Removes simple HTML tags that break the DOCX XML (e.g.<sub>).
+    text = re.sub(r"<[^>]+>", "", text)
     text = unicodedata.normalize("NFC", text)
     text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -52,26 +54,49 @@ def _clean_text(text: str) -> str:
 def _latex_to_text_general(text: str) -> str:
     """
     Convierte LaTeX a texto matematico compatible con Word (texto plano).
-    Normaliza fracciones, elimina delimitadores y reemplaza simbolos comunes
-    para reducir riesgos de caracteres ilegales en el DOCX.
+
+    Nota:
+    - DocxTpl/Word NO interpretan LaTeX. Esta funcion intenta "de-teXear":
+      * Normaliza escapes tipicos de JSON (\\n, \\r\\n, \\\\)
+      * Elimina delimitadores ($$, $, \[ \], \( \))
+      * Convierte comandos comunes a Unicode (\\times -> ×, etc.)
+      * Convierte fracciones simples \\frac{a}{b} -> (a/b)
+      * Conserva saltos de linea (no colapsa \\n a espacios)
     """
     if not isinstance(text, str):
         return text
 
-    out = text.replace("\r\n", "\n").replace("\r", "\n")
+    out = text
 
-    # Fracciones anidadas: \frac{a}{b} -> (a/b)
+    # 1) Convertir escapes literales provenientes de JSON a caracteres reales
+    #    (p.ej. "\\n" -> salto de linea real)
+    out = out.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+
+    # 2) Normalizar dobles backslashes tipicos de JSON (p.ej. "\\\\frac" -> "\\frac")
+    out = out.replace("\\\\", "\\")
+
+    # 3) Normalizar saltos de linea reales
+    out = out.replace("\r\n", "\n").replace("\r", "\n")
+
+    # 4) Eliminar delimitadores LaTeX frecuentes
+    out = out.replace("$$", "").replace("$", "")
+    out = re.sub(r"\\\[(.*?)\\\]", r"\1", out, flags=re.S)
+    out = re.sub(r"\\\((.*?)\\\)", r"\1", out, flags=re.S)
+
+    # 5) Fracciones simples (repite para soportar anidaciones "suaves")
     frac_pattern = re.compile(r"\\frac\{([^{}]+)\}\{([^{}]+)\}")
     while frac_pattern.search(out):
         out = frac_pattern.sub(r"(\1/\2)", out)
 
-    # Eliminar delimitadores y comandos de formato sin contenido
+    # 6) Quitar comandos que no aportan al texto
     out = re.sub(r"\\left|\\right", "", out)
     out = re.sub(r"\\[()]", "", out)
-    out = out.replace("$", "")
+
+    # 7) Remover wrappers comunes
     out = re.sub(r"\\mathrm\{\s*~?([^}]+)\s*\}", r"\1", out)
     out = re.sub(r"\\text\{\s*([^}]+)\s*\}", r"\1", out)
 
+    # 8) Reemplazos a Unicode / texto
     replacements = [
         (r"\\%", "%"),
         (r"\\times", "\u00d7"),
@@ -88,19 +113,28 @@ def _latex_to_text_general(text: str) -> str:
     for pattern, repl in replacements:
         out = re.sub(pattern, repl, out)
 
-    # Normalizacion basica
-    out = re.sub(r"\s+", " ", out).strip()
-    out = re.sub(r"\(\s+", "(", out)
-    out = re.sub(r"\s+\)", ")", out)
-    out = re.sub(r"\s*/\s*", "/", out)
-    out = re.sub(r"(\d)\s+%", r"\1%", out)
+    # 9) Normalizacion por linea (conserva saltos)
+    lines = []
+    for line in out.splitlines():
+        # colapsar espacios y tabs SOLO dentro de la linea
+        line = re.sub(r"[ \t]+", " ", line).strip()
+        # pequenas normalizaciones tipicas en expresiones
+        line = re.sub(r"\(\s+", "(", line)
+        line = re.sub(r"\s+\)", ")", line)
+        line = re.sub(r"\s*/\s*", "/", line)
+        line = re.sub(r"(\d)\s+%", r"\1%", line)
+        line = re.sub(r"\s*\u00d7\s*", "\u00d7", line)
+        lines.append(line)
 
-    # Normalizacion matematica general
+    out = "\n".join(lines)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+
+    # Normalizacion matematica general (unidades comunes)
     out = re.sub(r"\u00b5\s+g", "\u00b5g", out)
     out = re.sub(r"m\s+g", "mg", out)
     out = re.sub(r"n\s+g", "ng", out)
     out = re.sub(r"m\s+L", "mL", out)
-    out = re.sub(r"\s*\u00d7\s*", "\u00d7", out)
+
     return out
 
 
@@ -216,9 +250,9 @@ def _normalize_prueba(prueba: Dict[str, Any]) -> Dict[str, Any]:
         "referencias": _sanitize(_as_list(prueba.get("referencias"))),
     }
 
-
 def _build_method_context(method_data: Dict[str, Any]) -> Dict[str, Any]:
     """Arma el contexto para docxtpl a partir del nodo data del JSON."""
+    method_data = _deep_latex_cleanup(method_data)
     context: Dict[str, Any] = {}
 
     for field in ["tipo_metodo", "nombre_producto", "numero_metodo", "version_metodo", "codigo_producto", "objetivo"]:
