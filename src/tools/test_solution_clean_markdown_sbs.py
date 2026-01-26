@@ -54,6 +54,10 @@ CHUNK_SYSTEM_PROMPT = """
     - Sin numeración (ej: "DESCRIPCIÓN (USP)", "**VALORACIÓN (USP)**", "SOLVENTES RESIDUALES (USP)")
     - En diferentes formatos: encabezados markdown (#, ##), texto en negrita (**texto**), o texto en mayúsculas dentro de tablas
 
+    ### LENGUAJE
+    - Detecta el idioma predominante del texto y manténlo. **No traduzcas.**
+    - Copia los encabezados exactamente como aparezcan (si el documento está en inglés, devuelve los títulos en inglés; si está en español, en español).
+
     Para cada prueba analítica detectada, extrae:
     - `raw`: El encabezado/título EXACTO como aparece en el markdown (solo la línea del título, NO el contenido).
     - `section_id`: El número de sección si existe (ej: "7.1", "7.8"), o `null` si no tiene numeración.

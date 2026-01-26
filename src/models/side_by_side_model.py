@@ -29,6 +29,7 @@ class SideBySideModel(BaseModel):
             "sin repetir descripciones, criterios de aceptación, procedimientos ni notas internas. "
             "Instrucciones: "
             "1. CITA TEXTUAL: copiar cada encabezado exactamente como en el PDF (mantener mayúsculas, tildes, siglas USP/<232>, etc.). "
+            "   **No traduzcas; conserva el idioma original del documento (inglés o español según aplique).** "
             "2. NIVEL: registrar únicamente los encabezados de prueba o sección (DESCRIPCIÓN, PUNTO DE FUSIÓN, LÍMITE DE NAPROXENO LIBRE...). "
             "3. EXCLUSIONES: NO incluir subtítulos como 'Soluciones', 'Procedimiento', 'Criterio de aceptación', notas u observaciones. "
             "4. ORDEN: respetar el orden de aparición desde la parte superior hasta la inferior del documento. "
@@ -60,6 +61,7 @@ class SideBySideModelCompleto(BaseModel):
             "Misma lista ORDENADA de títulos principales (Nivel 1) descrita en `SideBySideModel`. "
             "Debe contener únicamente las pruebas de la columna propuesta (DESCRIPCIÓN, PUNTO DE FUSIÓN, IDENTIFICACIÓN A/B, etc.), "
             "copiadas literalmente con sus paréntesis USP/BP/EP cuando apliquen. "
+            "No traduzcas; mantén el idioma original presente en el PDF."
             "Excluir subtítulos internos como 'Soluciones', 'Procedimiento', 'Criterio de aceptación', notas o cálculos."
         ),
     )

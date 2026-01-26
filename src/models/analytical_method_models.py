@@ -223,6 +223,7 @@ class MetodoAnaliticoDA(BaseModel):
             "Extracción EXHAUSTIVA y LITERAL de la estructura jerárquica del documento. "
             "Instrucciones críticas: "
             "1. CITA TEXTUAL: El texto extraído debe ser idéntico al del documento (mismas mayúsculas, tildes, errores tipográficos y numeración). "
+            "   **No traduzcas; conserva el idioma original (si el documento está en inglés, los encabezados deben permanecer en inglés).** "
             "2. PROFUNDIDAD: Detecta y extrae todos los niveles jerárquicos visibles (Nivel 1 hasta Nivel 4 o más profundo). "
             "3. COMPLETITUD: No omitas secciones 'pequeñas' o técnicas. Si es un encabezado visual, debe estar en la lista. "
             "4. FORMATO: Cada string debe incluir el prefijo numérico y el título (ej: '5.5.3.2 Solución Hidróxido de Potasio'). "

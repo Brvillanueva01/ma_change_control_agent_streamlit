@@ -46,16 +46,28 @@ CHUNK_SEPARATORS = [
 
 # Patrones para identificar secciones de PROCEDIMIENTOS/DESARROLLO
 PROCEDURES_SECTION_PATTERNS = [
+    # Español
     r"^#+\s*\d*\.?\d*\s*PROCEDIMIENTOS?\b",
     r"^#+\s*\d*\.?\d*\s*DESARROLLO\b",
     r"^\d+\.?\s*PROCEDIMIENTOS?\b",
     r"^\d+\.?\s*DESARROLLO\b",
     r"^\*\*\s*\d*\.?\d*\s*PROCEDIMIENTOS?\b",
     r"^\*\*\s*\d*\.?\d*\s*DESARROLLO\b",
+    # Inglés
+    r"^#+\s*\d*\.?\d*\s*PROCEDURES?\b",
+    r"^#+\s*\d*\.?\d*\s*ANALYTICAL\s+PROCEDURES?\b",
+    r"^#+\s*\d*\.?\d*\s*TEST\s+PROCEDURES?\b",
+    r"^\d+\.?\s*PROCEDURES?\b",
+    r"^\d+\.?\s*ANALYTICAL\s+PROCEDURES?\b",
+    r"^\d+\.?\s*TEST\s+PROCEDURES?\b",
+    r"^\*\*\s*\d*\.?\d*\s*PROCEDURES?\b",
+    r"^\*\*\s*\d*\.?\d*\s*ANALYTICAL\s+PROCEDURES?\b",
+    r"^\*\*\s*\d*\.?\d*\s*TEST\s+PROCEDURES?\b",
 ]
 
 # Patrones para identificar secciones que terminan PROCEDIMIENTOS
 END_PROCEDURES_PATTERNS = [
+    # Español
     r"^#+\s*\d+\.?\s*REFERENCIA",
     r"^#+\s*\d+\.?\s*ANEXOS?",
     r"^#+\s*\d+\.?\s*DOCUMENTOS\s+RELACIONADOS",
@@ -64,6 +76,19 @@ END_PROCEDURES_PATTERNS = [
     r"^\d+\.?\s*ANEXOS?",
     r"^\d+\.?\s*DOCUMENTOS\s+RELACIONADOS",
     r"^\d+\.?\s*HIST[ÓO]RICO",
+    # Inglés
+    r"^#+\s*\d+\.?\s*REFERENCES?\b",
+    r"^#+\s*\d+\.?\s*ANNEX(?:ES)?\b",
+    r"^#+\s*\d+\.?\s*APPENDIX(?:ES)?\b",
+    r"^#+\s*\d+\.?\s*RELATED\s+DOCUMENTS\b",
+    r"^#+\s*\d+\.?\s*SUPPORTING\s+DOCUMENTS\b",
+    r"^#+\s*\d+\.?\s*(CHANGE|REVISION)\s+HISTORY\b",
+    r"^\d+\.?\s*REFERENCES?\b",
+    r"^\d+\.?\s*ANNEX(?:ES)?\b",
+    r"^\d+\.?\s*APPENDIX(?:ES)?\b",
+    r"^\d+\.?\s*RELATED\s+DOCUMENTS\b",
+    r"^\d+\.?\s*SUPPORTING\s+DOCUMENTS\b",
+    r"^\d+\.?\s*(CHANGE|REVISION)\s+HISTORY\b",
 ]
 
 CHUNK_SYSTEM_PROMPT = """
@@ -75,6 +100,10 @@ Analiza el texto en Markdown e identifica SOLO los encabezados que corresponden 
 - Con numeración (ej: "5.1 DESCRIPCIÓN", "## 5.8 VALORACIÓN")
 - Sin numeración (ej: "DESCRIPCIÓN (USP)", "**VALORACIÓN (USP)**", "SOLVENTES RESIDUALES (USP)")
 - En diferentes formatos: encabezados markdown (#, ##), texto en negrita (**texto**), o texto en mayúsculas dentro de tablas
+
+### LENGUAJE
+- Detecta el idioma predominante del texto. **No traduzcas.**
+- Copia encabezados exactamente como aparezcan en el documento (si el documento está en inglés, devuelve los títulos en inglés; si está en español, en español).
 
 Para cada prueba analítica detectada, extrae:
 - `raw`: El encabezado/título EXACTO como aparece en el markdown (solo la línea del título, NO el contenido).
@@ -288,6 +317,9 @@ def _remove_toc_section(markdown: str) -> str:
         re.compile(r"^#+\s*ÍNDICE", re.IGNORECASE),
         re.compile(r"^#+\s*INDICE", re.IGNORECASE),
         re.compile(r"^\*\*\s*TABLA\s+DE\s+CONTENIDO", re.IGNORECASE),
+        re.compile(r"^#+\s*TABLE\s+OF\s+CONTENTS", re.IGNORECASE),
+        re.compile(r"^#+\s*CONTENTS\b", re.IGNORECASE),
+        re.compile(r"^\*\*\s*TABLE\s+OF\s+CONTENTS", re.IGNORECASE),
     ]
     
     # Patrón para detectar líneas de TOC (con ... y número de página)
