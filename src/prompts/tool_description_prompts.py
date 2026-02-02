@@ -46,12 +46,13 @@ TEST_SOLUTION_CLEAN_MARKDOWN_TOOL_DESC = """
 
   ## Buenas Prácticas
   - **Precondición:** Asegúrate de que `state['files']` contenga `{base_path}/method_metadata_TOC_{source_file_name}.json` con `tabla_de_contenidos` y `markdown_completo`.
-  - **Pre-procesamiento:** Esta herramienta elimina automáticamente la TABLA DE CONTENIDO y extrae SOLO la sección PROCEDIMIENTOS/DESARROLLO para evitar duplicados de ESPECIFICACIONES.
+  - **Pre-procesamiento:** Por defecto elimina la TABLA DE CONTENIDO y recorta SOLO la sección PROCEDIMIENTOS/DESARROLLO para evitar duplicados de ESPECIFICACIONES. Si envías `method_format="hrm"`, conservará también la sección 3 SPECIFICATIONS para extraer los criterios de aceptación propios de HRM.
   - **source_file_name obligatorio:** Debes pasar el `source_file_name` que recibiste del paso anterior (pdf_da_metadata_toc).
 
   ## Parámetros
   - `source_file_name (str)`: Nombre del archivo de origen (sin extensión). **OBLIGATORIO**.
   - `base_path (str)`: Ruta base donde se encuentran los archivos. Default: `/actual_method`.
+  - `method_format (str)`: Opcional. Usa `"latam"` (default) o `"hrm"`. HRM habilita la extracción desde la sección SPECIFICATIONS (ítem 3) cuando los criterios de aceptación vienen en ese formato.
 
   ## Salida y efectos en el estado
   - **ToolMessage:** Reporta cuántas pruebas/soluciones se generaron, cuántas obtuvieron markdown, y la ruta del archivo generado.
@@ -192,8 +193,7 @@ EXTRACT_STRUCTURED_DATA_PROMPT_TOOL_DESC = """
   - Después de ejecutar esta herramienta, el siguiente paso lógico del agente es:
       1.  Llamar a `read_file()` sobre el archivo de **resumen** (ej. `/new/change_control_summary.json`) para obtener la lista de cambios o los datos estructurados.
       2.  Usar esa lista para informar al supervisor o para el siguiente paso de planificación (ej. 'dictionary-planner').
-"""
-
+""" 
 CHANGE_CONTROL_ANALYSIS_TOOL_DESCRIPTION = """
   Analiza la información estructurada de control de cambios y genera un plan accionable para actualizar el método analítico.
 

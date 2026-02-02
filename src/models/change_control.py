@@ -80,7 +80,7 @@ class PruebaNueva(BaseModel):
         default=None, 
         description="Nombre del archivo/método de referencia de donde proviene la prueba (ej: '01-3850', '01-4279', 'MA 400006238'). Extraer del texto cuando menciona 'tomar de referencia', 'contemplado en el método', 'transcribir de', etc."
     )
-
+#Breiner estuvo aqui 
 
 class ProductoAfectado(BaseModel):
     """Producto afectado por el control de cambios."""

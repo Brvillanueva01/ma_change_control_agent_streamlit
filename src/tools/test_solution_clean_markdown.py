@@ -91,7 +91,7 @@ END_PROCEDURES_PATTERNS = [
     r"^\d+\.?\s*(CHANGE|REVISION)\s+HISTORY\b",
 ]
 
-CHUNK_SYSTEM_PROMPT = """
+CHUNK_SYSTEM_PROMPT_LATAM = """
 ### ROLE
 Eres un experto en análisis de documentos de métodos analíticos farmacéuticos. Tu objetivo es identificar ÚNICAMENTE los **NOMBRES DE PRUEBAS ANALÍTICAS PRINCIPALES** de la sección de **PROCEDIMIENTOS** de un documento en formato Markdown.
 
@@ -249,6 +249,107 @@ Input: "## Cálculos"
 → NO extraer (es sección de cálculos)
 """
 
+CHUNK_SYSTEM_PROMPT_HRM = """
+### ROLE
+Eres un experto en análisis de documentos de métodos analíticos farmacéuticos. Tu objetivo es identificar **TODOS los NOMBRES DE PRUEBAS ANALÍTICAS PRINCIPALES** tanto en la sección de **PROCEDIMIENTOS/DESARROLLO** como en la sección **SPECIFICATIONS / ESPECIFICACIONES** (usualmente ítem 3 en métodos HRM) de un documento en formato Markdown.
+
+### TASK
+Analiza el texto en Markdown e identifica los encabezados que corresponden a **PRUEBAS ANALÍTICAS** dentro de las secciones válidas. Las pruebas pueden aparecer:
+- Con numeración (ej: "3.1 DESCRIPTION", "## 7.1 IDENTIFICATION")
+- Sin numeración (ej: "DESCRIPTION", "**APPEARANCE**", "IMPURITIES")
+- En diferentes formatos: encabezados markdown (#, ##), texto en negrita (**texto**), texto plano en mayúsculas o dentro de tablas
+
+### LENGUAJE
+- Detecta el idioma predominante del texto. **No traduzcas.**
+- Copia encabezados exactamente como aparezcan en el documento (si el documento está en inglés, devuelve los títulos en inglés; si está en español, en español).
+
+Para cada prueba analítica detectada, extrae:
+- `raw`: El encabezado/título EXACTO como aparece en el markdown (solo la línea del título, NO el contenido).
+- `section_id`: El número de sección si existe (ej: "3.1", "7.1"), o `null` si no tiene numeración.
+- `title`: El nombre de la prueba SIN la numeración inicial, copiado EXACTAMENTE como aparece.
+
+### IMPORTANTE: SECCIONES VÁLIDAS
+- **Incluye** pruebas que estén en **SPECIFICATIONS/ESPECIFICACIONES** (ítem 3) porque ahí se listan los criterios de aceptación en el formato HRM.
+- **Incluye** pruebas en **PROCEDIMIENTOS/DESARROLLO**.
+- **NUNCA** extraigas de la **TABLA DE CONTENIDO** o **ÍNDICE** ni de secciones generales como alcance, objetivo, glosario, referencias, anexos, históricos.
+
+### CRITERIOS DE INCLUSIÓN
+Extrae encabezados que sean **pruebas analíticas** en las secciones válidas:
+- DESCRIPTION / APPEARANCE / DESCRIPCIÓN
+- IDENTIFICATION / IDENTIFICACIÓN (IR, UV, HPLC, etc.)
+- ASSAY / VALORACIÓN / ENSAYO / POTENCY
+- DISSOLUTION / DISOLUCIÓN
+- IMPURITIES / RELATED SUBSTANCES / SUSTANCIAS RELACIONADAS
+- WATER / LOSS ON DRYING / PÉRDIDA POR SECADO / HUMEDAD
+- pH
+- UNIFORMITY OF DOSAGE UNITS / UNIFORMIDAD DE CONTENIDO
+- RESIDUAL SOLVENTS / SOLVENTES RESIDUALES
+- HEAVY METALS / METALES PESADOS
+- MICROBIOLOGICAL LIMITS / ESTERILIDAD / ENDOTOXINAS
+- Otras pruebas analíticas con nombres equivalentes
+
+### CRITERIOS DE EXCLUSIÓN (QUÉ NO EXTRAER)
+**NO extraigas** las siguientes secciones:
+- **Entradas de TABLA DE CONTENIDO** (líneas con "..." seguido de número de página)
+- Encabezados generales fuera de SPECIFICATIONS o PROCEDIMIENTOS (objetivo, alcance, anexos, referencias, históricos, glosario, definiciones)
+- Preparación de soluciones, reactivos, condiciones instrumentales, cálculo, equipos
+- Subsecciones numeradas con más de un punto decimal (ej: 5.1.1, 5.9.2, 5.10.3)
+- Parámetros de SST u orden de inyección
+
+### REGLAS DE EXTRACCIÓN
+- `raw`: Copia SOLO la línea del encabezado/título EXACTAMENTE como aparece (incluyendo #, **, |, etc.), NO incluyas el contenido.
+- `section_id`: Extrae el número de sección si existe. Si NO hay número, usa `null`. **NUNCA inventes números de sección**.
+- `title`: Copia el nombre de la prueba EXACTAMENTE como aparece, sin la numeración inicial.
+
+### OUTPUT FORMAT
+```json
+{
+  "test_methods": [
+    {
+      "raw": "string",
+      "section_id": "string o null",
+      "title": "string"
+    }
+  ]
+}
+```
+
+Si no encuentras ninguna prueba analítica principal, devuelve:
+```json
+{
+  "test_methods": []
+}
+```
+
+### EJEMPLOS
+
+**Ejemplo 1 - HRM en SPECIFICATIONS:**
+Input: "3.1 DESCRIPTION"
+Output:
+```json
+{
+  "raw": "3.1 DESCRIPTION",
+  "section_id": "3.1",
+  "title": "DESCRIPTION"
+}
+```
+
+**Ejemplo 2 - Prueba en PROCEDIMIENTOS:**
+Input: "## 7.5 ASSAY (HPLC)"
+Output:
+```json
+{
+  "raw": "## 7.5 ASSAY (HPLC)",
+  "section_id": "7.5",
+  "title": "ASSAY (HPLC)"
+}
+```
+
+**Ejemplo 3 - NO es prueba analítica (NO extraer):**
+Input: "## Objective"
+→ NO extraer (es sección general)
+"""
+
 CHUNK_HUMAN_PROMPT_TEMPLATE = """
 A continuación se encuentra la sección del documento a analizar:
  
@@ -258,6 +359,37 @@ A continuación se encuentra la sección del documento a analizar:
 """
 
 llm_model = init_chat_model(model="openai:gpt-5-mini")
+
+
+def _normalize_method_format(value: Optional[str]) -> str:
+    """Normaliza el formato de método recibido desde UI o prompts."""
+    if not value:
+        return "latam"
+    value = value.strip().lower()
+    if "hrm" in value:
+        return "hrm"
+    if "latam" in value:
+        return "latam"
+    return "latam"
+
+
+def _infer_method_format(provided_format: Optional[str], markdown: str) -> str:
+    """
+    Determina el formato a utilizar.
+    - Respeta el formato proporcionado explícitamente (UI/prompt).
+    - Si no se proporcionó, detecta HRM cuando el documento contiene una sección 3.* SPECIFICATIONS.
+    """
+    normalized = _normalize_method_format(provided_format)
+    if normalized != "latam":
+        return normalized
+
+    try:
+        if re.search(r"(?im)^\\s*3\\.?\\s*specifications\\b", markdown or ""):
+            return "hrm"
+    except re.error:
+        pass
+
+    return "latam"
 
 
 class TestMethodFromChunk(BaseModel):
@@ -421,13 +553,12 @@ def _extract_procedures_section(markdown: str) -> str:
     return result
 
 
-def _preprocess_markdown_for_extraction(markdown: str) -> str:
+def _preprocess_markdown_for_extraction(markdown: str, include_specifications: bool = False) -> str:
     """
     Pre-procesa el markdown antes de la extracción:
     1. Elimina la tabla de contenido (TOC)
-    2. Extrae solo la sección PROCEDIMIENTOS/DESARROLLO
-    
-    Esto evita extraer pruebas de ESPECIFICACIONES o de la TOC.
+    2. Extrae solo la sección PROCEDIMIENTOS/DESARROLLO (formato LATAM)
+       o conserva SPECIFICATIONS + PROCEDIMIENTOS (formato HRM)
     """
     if not markdown:
         return ""
@@ -435,9 +566,13 @@ def _preprocess_markdown_for_extraction(markdown: str) -> str:
     # Paso 1: Eliminar TOC
     markdown_without_toc = _remove_toc_section(markdown)
     
-    # Paso 2: Extraer solo sección PROCEDIMIENTOS
+    # Paso 2: Controlar secciones según formato
+    if include_specifications:
+        # Para HRM conservamos el markdown completo (sin TOC) para incluir SPECIFICATIONS
+        return markdown_without_toc
+
+    # Para formato LATAM mantener solo PROCEDIMIENTOS/DESARROLLO
     procedures_section = _extract_procedures_section(markdown_without_toc)
-    
     return procedures_section
 
 
@@ -453,11 +588,12 @@ async def _extract_headers_from_chunk(
     chunk_text: str,
     chunk_index: int,
     total_chunks: int,
+    system_prompt: str,
 ) -> TestMethodsFromChunk:
     """Extrae encabezados de un chunk individual usando el LLM."""
     structured_llm = llm_model.with_structured_output(TestMethodsFromChunk)
 
-    system_message = SystemMessage(content=CHUNK_SYSTEM_PROMPT)
+    system_message = SystemMessage(content=system_prompt)
     human_message = HumanMessage(
         content=CHUNK_HUMAN_PROMPT_TEMPLATE.format(
             chunk_text=chunk_text,
@@ -480,6 +616,7 @@ async def _extract_headers_from_chunk(
 @traceable(name="extract_headers_parallel")
 async def _extract_headers_from_all_chunks(
     chunks: List[str],
+    system_prompt: str,
 ) -> List[TestMethodsFromChunk]:
     """Extrae encabezados de todos los chunks en paralelo."""
     if not chunks:
@@ -489,7 +626,7 @@ async def _extract_headers_from_all_chunks(
     logger.info("Procesando %d chunks en paralelo para extracción de encabezados...", total_chunks)
 
     tasks = [
-        _extract_headers_from_chunk(chunk, idx + 1, total_chunks)
+        _extract_headers_from_chunk(chunk, idx + 1, total_chunks, system_prompt)
         for idx, chunk in enumerate(chunks)
     ]
 
@@ -699,10 +836,13 @@ def _markdown_doc_path(base_path: str, source_file_name: str) -> str:
 
 
 @traceable(name="test_solution_clean_markdown")
-def _run_extraction_pipeline(full_markdown: str) -> List[Dict[str, Optional[str]]]:
+def _run_extraction_pipeline(
+    full_markdown: str,
+    include_specifications: bool = False,
+) -> List[Dict[str, Optional[str]]]:
     """
     Pipeline principal de extracción:
-    0. Pre-procesa el markdown (elimina TOC, extrae solo PROCEDIMIENTOS)
+    0. Pre-procesa el markdown (elimina TOC y, según el formato, conserva SPECIFICATIONS)
     1. Divide el markdown en chunks
     2. Extrae encabezados de cada chunk en paralelo
     3. Deduplica y fusiona resultados
@@ -710,7 +850,9 @@ def _run_extraction_pipeline(full_markdown: str) -> List[Dict[str, Optional[str]
     5. Construye segmentos de markdown usando el markdown ORIGINAL (para preservar contexto)
     """
     # Paso 0: Pre-procesar markdown para extracción de headers
-    preprocessed_markdown = _preprocess_markdown_for_extraction(full_markdown)
+    preprocessed_markdown = _preprocess_markdown_for_extraction(
+        full_markdown, include_specifications=include_specifications
+    )
     logger.info(
         "Markdown pre-procesado: %d caracteres originales -> %d caracteres filtrados",
         len(full_markdown),
@@ -724,7 +866,8 @@ def _run_extraction_pipeline(full_markdown: str) -> List[Dict[str, Optional[str]
     if not chunks:
         return []
 
-    chunk_results = asyncio.run(_extract_headers_from_all_chunks(chunks))
+    system_prompt = CHUNK_SYSTEM_PROMPT_LATAM if not include_specifications else CHUNK_SYSTEM_PROMPT_HRM
+    chunk_results = asyncio.run(_extract_headers_from_all_chunks(chunks, system_prompt))
 
     merged_headers = _merge_headers_from_chunks(chunk_results)
     logger.info("Se identificaron %d encabezados de pruebas/soluciones", len(merged_headers))
@@ -744,6 +887,7 @@ def test_solution_clean_markdown(
     state: Annotated[DeepAgentState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
     base_path: str = DEFAULT_BASE_PATH,
+    method_format: str = "latam",
 ) -> Command:
     """
     Herramienta que extrae pruebas/soluciones del markdown usando chunking + LLM.
@@ -751,6 +895,7 @@ def test_solution_clean_markdown(
     Args:
         source_file_name: Nombre del archivo de origen (sin extensión, ej: 'MA 100000346')
         base_path: Ruta base (/actual_method o /proposed_method)
+        method_format: 'latam' (default) o 'hrm'. HRM conserva la sección 3 SPECIFICATIONS para extraer criterios.
     
     Nuevo enfoque:
     1. Divide el markdown en chunks usando RecursiveCharacterTextSplitter
@@ -791,7 +936,12 @@ def test_solution_clean_markdown(
             }
         )
 
-    tests_with_markdown = _run_extraction_pipeline(full_markdown)
+    resolved_format = _infer_method_format(method_format, full_markdown)
+    include_specifications = resolved_format == "hrm"
+
+    tests_with_markdown = _run_extraction_pipeline(
+        full_markdown, include_specifications=include_specifications
+    )
 
     toc_entries = [
         test.get("raw") or test.get("title")
@@ -803,6 +953,7 @@ def test_solution_clean_markdown(
         "full_markdown": full_markdown,
         "toc_entries": toc_entries,
         "items": tests_with_markdown,
+        "method_format": resolved_format,
     }
 
     content_str = json.dumps(payload, indent=2, ensure_ascii=False)
@@ -815,7 +966,8 @@ def test_solution_clean_markdown(
     total_items = len(tests_with_markdown)
     populated_items = sum(1 for item in tests_with_markdown if item.get("markdown"))
     summary_message = (
-        f"Extracción completada para '{source_file_name}': {total_items} pruebas/soluciones identificadas; "
+        f"Extracción completada para '{source_file_name}' "
+        f"(formato: {resolved_format.upper()}): {total_items} pruebas/soluciones identificadas; "
         f"{populated_items} incluyen markdown extraído. Archivo: {markdown_doc_name}"
     )
 

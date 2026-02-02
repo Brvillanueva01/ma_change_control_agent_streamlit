@@ -64,6 +64,7 @@ class SideBySideModelCompleto(BaseModel):
             "No traduzcas; mantén el idioma original presente en el PDF."
             "Excluir subtítulos internos como 'Soluciones', 'Procedimiento', 'Criterio de aceptación', notas o cálculos."
         ),
+        #Breiner estuvo aqui 
     )
     markdown_completo: str = Field(
         ...,

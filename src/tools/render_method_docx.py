@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import logging
@@ -31,9 +31,13 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Rutas por defecto
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 METHOD_DEFAULT_PATH = "/new/new_method_final.json"
-TEMPLATE_DEFAULT_PATH = Path(__file__).parent.parent / "template" / "Plantilla.docx"
-OUTPUT_DEFAULT_DIR = Path(__file__).parent.parent.parent / "output"
+TEMPLATE_DIR = PROJECT_ROOT / "src" / "template"
+TEMPLATE_ESP_PATH = TEMPLATE_DIR / "Plantilla_ESP.docx"
+TEMPLATE_EN_PATH = TEMPLATE_DIR / "Plantilla_EN.docx"
+LEGACY_TEMPLATE_PATH = TEMPLATE_DIR / "Plantilla.docx"
+OUTPUT_DEFAULT_DIR = PROJECT_ROOT / "output"
 
 
 def _clean_text(text: str) -> str:
@@ -250,6 +254,129 @@ def _normalize_prueba(prueba: Dict[str, Any]) -> Dict[str, Any]:
         "referencias": _sanitize(_as_list(prueba.get("referencias"))),
     }
 
+
+def _iter_text_fragments(obj: Any):
+    """Itera recursivamente sobre todos los strings en un objeto anidado."""
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for value in obj.values():
+            yield from _iter_text_fragments(value)
+    elif isinstance(obj, (list, tuple, set)):
+        for item in obj:
+            yield from _iter_text_fragments(item)
+
+
+SPANISH_MARKERS = {
+    "que", "para", "metodo", "método", "ensayo", "valoracion", "valoración", "disolucion", "disolución",
+    "identificacion", "identificación", "procedimiento", "procedimientos", "producto", "analitico", "analítico",
+    "condiciones", "solucion", "solución", "criterio", "aceptacion", "aceptación", "cumple", "observaciones", "pruebas",
+}
+ENGLISH_MARKERS = {
+    "the", "and", "method", "assay", "dissolution", "identification", "procedure", "procedures", "product",
+    "analytical", "conditions", "solution", "acceptance", "meets", "observations", "tests",
+}
+
+
+def _detect_language(method_data: Dict[str, Any]) -> str:
+    """
+    Heurística ligera para detectar idioma predominante (es/en) en el método.
+    - Usa presencia de caracteres acentuados y conteo de palabras clave.
+    - Si no hay señal clara, devuelve 'es' por compatibilidad retro.
+    """
+    lang_field = method_data.get("idioma") or method_data.get("language")
+    if isinstance(lang_field, str):
+        lang_lower = lang_field.lower()
+        if lang_lower.startswith("en"):
+            return "en"
+        if lang_lower.startswith("es") or lang_lower.startswith("spa"):
+            return "es"
+
+    fragments = []
+    total_len = 0
+    for frag in _iter_text_fragments(method_data):
+        if not frag:
+            continue
+        fragments.append(str(frag))
+        total_len += len(frag)
+        if total_len > 50000:  # evitar textos enormes
+            break
+    text = " ".join(fragments)
+    lowered = text.lower()
+
+    accent_score = len(re.findall(r"[áéíóúñüÁÉÍÓÚÑÜ]", text))
+    spanish_score = accent_score * 2 + sum(lowered.count(w) for w in SPANISH_MARKERS)
+    english_score = sum(lowered.count(w) for w in ENGLISH_MARKERS)
+
+    if english_score == 0 and spanish_score == 0:
+        return "es"
+    return "es" if spanish_score >= english_score else "en"
+
+
+def _resolve_template_path(
+    template_path: Optional[str],
+    method_data: Dict[str, Any],
+    detected_language: Optional[str] = None,
+) -> Path:
+    """
+    Determina la plantilla DOCX a usar:
+    - Si se pasa `template_path`, se respeta.
+    - Si no, detecta idioma y usa Plantilla_ESP o Plantilla_EN.
+    - Fallback: Plantilla.docx legacy si las nuevas no existen.
+    """
+    if template_path:
+        return Path(template_path)
+
+    language = detected_language or _detect_language(method_data)
+    candidate = TEMPLATE_ESP_PATH if language == "es" else TEMPLATE_EN_PATH
+    if candidate.exists():
+        return candidate
+
+    if LEGACY_TEMPLATE_PATH.exists():
+        logger.warning(
+            "Plantilla %s no encontrada. Usando plantilla legacy: %s",
+            candidate.name,
+            LEGACY_TEMPLATE_PATH,
+        )
+        return LEGACY_TEMPLATE_PATH
+
+    raise FileNotFoundError(
+        f"No se encontraron plantillas disponibles en {TEMPLATE_DIR}. "
+        "Agrega Plantilla_ESP.docx o Plantilla_EN.docx o usa template_path."
+    )
+
+
+def _resolve_output_directory(output_dir: Optional[str]) -> Path:
+    """
+    Normaliza el directorio de salida para evitar carpetas inesperadas.
+
+    - Sin argumento o vacío → usa `OUTPUT_DEFAULT_DIR` (output/ en el root).
+    - Ruta absoluta → se respeta.
+    - Ruta relativa que empieza por `output` → se ancla bajo `OUTPUT_DEFAULT_DIR`.
+    - Cualquier otra ruta relativa → se ignora y se usa `OUTPUT_DEFAULT_DIR`.
+    """
+    if not output_dir or str(output_dir).strip() == "":
+        return OUTPUT_DEFAULT_DIR
+
+    candidate = Path(output_dir)
+
+    if candidate.is_absolute():
+        return candidate
+
+    parts = list(candidate.parts)
+    if not parts:
+        return OUTPUT_DEFAULT_DIR
+
+    if parts[0].lower() == "output":
+        return OUTPUT_DEFAULT_DIR.joinpath(*parts[1:])
+
+    logger.warning(
+        "output_dir relativo '%s' detectado; se redirige a directorio por defecto: %s",
+        output_dir,
+        OUTPUT_DEFAULT_DIR,
+    )
+    return OUTPUT_DEFAULT_DIR
+
 def _build_method_context(method_data: Dict[str, Any]) -> Dict[str, Any]:
     """Arma el contexto para docxtpl a partir del nodo data del JSON."""
     method_data = _deep_latex_cleanup(method_data)
@@ -392,14 +519,18 @@ def render_method_docx(
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
 
-    # Resolver rutas de plantilla y salida
-    tpl_path = Path(template_path) if template_path else TEMPLATE_DEFAULT_PATH
-    out_dir = Path(output_dir) if output_dir else OUTPUT_DEFAULT_DIR
+    detected_language = _detect_language(method_data)
 
-    if not tpl_path.exists():
-        msg = f"Plantilla no encontrada: {tpl_path}"
+    # Resolver rutas de plantilla y salida
+    try:
+        tpl_path = _resolve_template_path(template_path, method_data, detected_language)
+    except FileNotFoundError as exc:
+        msg = str(exc)
         logger.error(msg)
         return Command(update={"messages": [ToolMessage(content=msg, tool_call_id=tool_call_id)]})
+
+    out_dir = _resolve_output_directory(output_dir)
+    logger.info("Directorio de salida resuelto: %s", out_dir)
 
     # Construir contexto para la plantilla
     try:
@@ -430,6 +561,7 @@ def render_method_docx(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_method": method_path,
         "template_used": str(tpl_path),
+        "detected_language": detected_language,
     }
 
     files_update = source_files.copy()
@@ -449,6 +581,8 @@ def render_method_docx(
         f"- Producto: {nombre_producto}\n"
         f"- Metodo: {numero_metodo}\n"
         f"- Pruebas renderizadas: {num_pruebas}\n"
+        f"- Idioma detectado: {detected_language.upper()}\n"
+        f"- Plantilla: {tpl_path.name}\n"
         f"- Archivo: {output_path}"
     )
     logger.info(tool_message)

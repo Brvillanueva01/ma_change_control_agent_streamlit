@@ -241,6 +241,12 @@ def render_new_method_section() -> None:
         st.text_input("Version", placeholder="Ej: V00", key="version_metodo")
     with cols[1]:
         st.text_input("Codigo Antiguo", placeholder="Ej: 23424", key="codigo_antiguo")
+    st.selectbox(
+        "Formato del metodo",
+        ["LATAM", "HRM"],
+        key="method_format",
+        help="Selecciona HRM si las especificaciones/criterios vienen en el ítem 3 bajo SPECIFICATIONS.",
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -359,6 +365,14 @@ def render_cta() -> None:
                 return
 
             payload_lines = []
+            method_format = (st.session_state.get("method_format") or "LATAM").upper()
+            payload_lines.append(
+                f"- Formato del metodo analitico: {method_format}. Usa test_solution_clean_markdown con method_format=\"{method_format.lower()}\" cuando corresponda."
+            )
+            if method_format == "HRM":
+                payload_lines.append(
+                    "- Nota HRM: Las SPECIFICATIONS (ítem 3) contienen los criterios de aceptación y deben extraerse igual que los criterios de DESARROLLO."
+                )
             legacy_path = _persist_upload(legacy, tmp_dir).as_posix()
             payload_lines.append(f"- Metodo analitico legado: '{legacy_path}'.")
 

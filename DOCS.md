@@ -25,7 +25,7 @@
   - `/analytical_tests/`: resumen de pruebas por archivo (fuente, tipo, section_id).
   - `/new/`: plan, parches, metodo consolidado, mapeo de referencias, resumen de CC, info de DOCX.
   - `/logs/`: bitacora de parches aplicados.
-- Plantillas y salida: `src/template/Plantilla.docx` (entrada de render), `output/` (DOCX generado).
+- Plantillas y salida: `src/template/Plantilla_ESP.docx` y `src/template/Plantilla_EN.docx` (selección automática según idioma, override con `template_path`), `output/` (DOCX generado).
 - Dependencias: ver `requirements.txt` (langchain/langgraph/deepagents, mistralai para OCR, docxtpl/python-docx para render, pypdf2/pypdf, numpy/pandas).
 
 ## Flujos principales
@@ -46,7 +46,7 @@
   2) `analyze_change_impact` carga todos los `test_solution_structured_content_*.json` y el CC; genera plan `/new/change_implementation_plan.json` (acciones editar/adicionar/eliminar/dejar igual).
   3) Fan-out: `apply_method_patch` por `action_index` (usa plan, metodos legado/propuesto, LLM) guarda parches `/new/applied_changes/{i}.json` y bitacora `/logs/change_patch_log.jsonl`.
   4) Fan-in: `consolidate_new_method` aplica parches sobre metodo base, copia metadata del legado y deja `/new/new_method_final.json`.
-  5) `render_method_docx` usa `src/template/Plantilla.docx` para generar DOCX en `output/` y registra `/new/rendered_docx_info.json`.
+  5) `render_method_docx` detecta idioma (es/en), usa `src/template/Plantilla_ESP.docx` o `src/template/Plantilla_EN.docx` (o plantilla dada en `template_path`), genera DOCX en `output/` y registra `/new/rendered_docx_info.json`.
 
 ## Herramientas (src/tools) a detalle
 - Ingesta/OCR:
@@ -66,7 +66,7 @@
 - Aplicacion y consolidacion final:
   - `apply_method_patch(action_index)`: valida plan, reconstruye metodo base si falta, localiza prueba objetivo por `_source_id`/section/nombre, toma evidencia propuesta/legacy, invoca LLM (`GeneratedMethodPatch`), guarda parche `/new/applied_changes/{i}.json`, actualiza metodo acumulado y log `/logs/change_patch_log.jsonl`.
   - `consolidate_new_method`: aplica parches en orden, conserva metadata del legado (apis, tipo_metodo, objetivo, historico, etc.), escribe `/new/new_method_final.json`, limpia parches consumidos.
-  - `render_method_docx`: normaliza texto (elimina caracteres de control, convierte LaTeX simple), renderiza con docxtpl usando `Plantilla.docx`, deja DOCX en `output/` y metadata en `/new/rendered_docx_info.json`.
+  - `render_method_docx`: normaliza texto (elimina caracteres de control, convierte LaTeX simple), detecta idioma y elige `Plantilla_ESP.docx` o `Plantilla_EN.docx` (override con `template_path`), deja DOCX en `output/` y metadata (con `detected_language`) en `/new/rendered_docx_info.json`.
 
 ## Estado virtual y archivos
 - Cada entrada en `files` sigue `{ "content": [...]|str, "data": obj, "modified_at": iso }`.
@@ -83,7 +83,7 @@
 ## Configuracion y prerequisitos
 - Python 3.11 (`langgraph.json`), deps en `requirements.txt`.
 - Variables de entorno: `MISTRAL_API_KEY` requerida para OCR (Mistral); OpenAI se configura via `init_chat_model`.
-- Plantilla DOCX en `src/template/Plantilla.docx`; salida en `output/`.
+- Plantillas DOCX en `src/template/Plantilla_ESP.docx` (es) y `Plantilla_EN.docx` (en); salida en `output/`.
 - Para procesamiento correcto, los archivos PDF/DOCX deben estar accesibles con rutas absolutas pasadas a las herramientas.
 
 ## Decisiones y patrones (alineado al documento Word)

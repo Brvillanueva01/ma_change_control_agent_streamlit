@@ -229,6 +229,7 @@ class MetodoAnaliticoDA(BaseModel):
             "4. FORMATO: Cada string debe incluir el prefijo numérico y el título (ej: '5.5.3.2 Solución Hidróxido de Potasio'). "
             "NO resumas, NO corrijas ortografía, NO agrupes ítems."
         ),
+      #Breiner estuvo aqui 
     )
     objetivo: Optional[str] = Field(
         None,
